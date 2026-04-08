@@ -1,6 +1,5 @@
 /* ============================================================
    Document.css — Composant unifié (Admin + Chercheur + Invite)
-   Fusion de Doc.css et Document.css
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lato:wght@300;400;700&family=Space+Mono:wght@400;700&display=swap');
@@ -30,6 +29,8 @@
   --doc-sans:    'Lato', sans-serif;
   --doc-display: 'Playfair Display', serif;
   --doc-t:       .15s ease;
+  --doc-t-spring: .38s cubic-bezier(.34,1.4,.64,1);
+  --doc-t-smooth: .22s cubic-bezier(.4,0,.2,1);
   --doc-panel-w: 440px;
 }
 
@@ -39,7 +40,7 @@
 .doc-root {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 100vh;
   font-family: var(--doc-sans);
   color: var(--doc-text);
   background: var(--doc-bg);
@@ -171,16 +172,27 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+  justify-content: center;
 }
 
 .doc-section {
-  padding: 18px 24px;
+  padding: 18px 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   border-bottom: 0.5px solid var(--doc-border2);
+  width: 100%;
+  align-items: center;
 }
-.doc-section:last-child { border-bottom: none; }
+
+.doc-section:last-child {
+  border-bottom: none;
+  flex: 1;
+}
 
 .doc-section-label {
   font-family: var(--doc-mono);
@@ -191,61 +203,238 @@
   color: var(--doc-faint);
 }
 
-/* ══════════════════════════════════════════
-   GRILLE DE TYPES — 6 cartes
-══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   GRILLE DE TYPES — améliorée
+═══════════════════════════════════════════════════════════ */
+
 .doc-type-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  width: 100%;
+  transition:
+    grid-template-columns var(--doc-t-smooth),
+    gap                   var(--doc-t-smooth),
+    padding               var(--doc-t-smooth);
+}
+.doc-section:first-child {
+  display: flex;
+  flex-direction: column;
+  
+  align-items: center;
+  
+  padding: 20px 0;
+}
+/* Mode compact : centrage vertical */
+.doc-section:first-child:has(.doc-type-grid.compact) {
+  justify-content: center;
+  flex: 1;
+  min-height: 60vh;
+}
+
+/* Mode étendu : pas de centrage vertical, tout en haut */
+.doc-section:first-child:has(.doc-type-grid.expanded) {
+  justify-content: flex-start;
+  flex: 0;
+  min-height: auto;
+}
+.doc-section:not(:first-child) {
+  justify-content: flex-start;
+}
+/* Mode compact — 3 colonnes centrées */
+.doc-type-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 260px));
+  justify-content: center;
+  gap: 24px;
+  padding: 40px 0 30px;
+}
+
+/* Augmenter aussi la taille du contenu des cartes */
+.doc-type-grid.compact .doc-type-card {
+  padding: 24px 20px 18px; /* Plus de padding interne */
   gap: 10px;
 }
 
+.doc-type-grid.compact .doc-type-card-icon { 
+  font-size: 36px; /* Icône plus grande */
+}
+
+.doc-type-grid.compact .doc-type-card-label { 
+  font-size: 15px; /* Texte plus grand */
+}
+
+.doc-type-grid.compact .doc-type-card-count { 
+  font-size: 32px; /* Chiffre plus grand */
+}
+
+/* Mode étendu — 6 colonnes pleine largeur */
+.doc-type-grid.expanded {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  margin-top: 0; /* S'assure d'être en haut */
+}
+
+/* ── Carte de type ── */
 .doc-type-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 14px 14px 12px;
+  gap: 0;
   background: var(--doc-bg2);
   border: 0.5px solid var(--doc-border);
   border-radius: var(--doc-r);
   cursor: pointer;
-  text-align: left;
   overflow: hidden;
-  transition: transform var(--doc-t), border-color var(--doc-t), box-shadow var(--doc-t), background var(--doc-t);
+  text-align: left;
+  transition:
+    border-color var(--doc-t-smooth),
+    background   var(--doc-t-smooth),
+    transform    var(--doc-t-spring);
+  outline: none;
 }
+
 .doc-type-card:hover {
-  transform: translateY(-2px);
   border-color: var(--tc, var(--doc-accent));
-  box-shadow: 0 4px 16px rgba(0,0,0,.09);
+  transform: translateY(-2px);
 }
+
+.doc-type-card:focus-visible {
+  box-shadow: 0 0 0 3px var(--doc-glow);
+}
+
+/* État actif */
 .doc-type-card.active {
   border-color: var(--tc, var(--doc-accent));
   background: color-mix(in srgb, var(--tc, var(--doc-accent)) 7%, var(--doc-bg2));
 }
-.doc-type-card.empty { opacity: .55; }
-.doc-type-card.empty:hover { opacity: .85; }
 
-.doc-type-card-icon  { font-size: 22px; line-height: 1; }
-.doc-type-card-label {
-  font-size: 11.5px;
+/* Halo coloré en fond (pseudo-élément) */
+.doc-type-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 20% 110%,
+    color-mix(in srgb, var(--tc, var(--doc-accent)) 18%, transparent),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity var(--doc-t-smooth);
+  pointer-events: none;
+}
+.doc-type-card.active::before,
+.doc-type-card:hover::before { opacity: 1; }
+
+/* Point indicateur coin supérieur droit */
+.doc-type-card::after {
+  content: '';
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--tc, var(--doc-accent));
+  opacity: 0;
+  transform: scale(0);
+  transition:
+    opacity  var(--doc-t-smooth),
+    transform var(--doc-t-spring);
+}
+.doc-type-card.active::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Carte vide */
+.doc-type-card.empty {
+  opacity: .52;
+  pointer-events: auto;
+}
+.doc-type-card.empty:hover { transform: none; border-color: var(--doc-border); }
+.doc-type-card.empty::before,
+.doc-type-card.empty::after { display: none; }
+
+/* ── Contenu interne ── */
+.doc-type-card-icon,
+.doc-type-card-label,
+.doc-type-card-count {
+  position: relative;
+  z-index: 1;
+  transition: font-size var(--doc-t-smooth), color var(--doc-t);
+}
+
+/* Tailles en mode compact */
+.doc-type-grid.compact .doc-type-card {
+  padding: 16px 16px 14px;
+  gap: 6px;
+}
+.doc-type-grid.compact .doc-type-card-icon  { font-size: 28px; line-height: 1; }
+.doc-type-grid.compact .doc-type-card-label { font-size: 13px; font-weight: 700; color: var(--doc-muted); }
+.doc-type-grid.compact .doc-type-card-count {
+  font-family: var(--doc-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--doc-text);
+  margin-top: 2px;
+  line-height: 1.1;
+}
+
+/* Tailles en mode étendu */
+.doc-type-grid.expanded .doc-type-card {
+  padding: 11px 11px 10px;
+  gap: 3px;
+}
+.doc-type-grid.expanded .doc-type-card-icon  { font-size: 18px; line-height: 1; }
+.doc-type-grid.expanded .doc-type-card-label {
+  font-size: 11px;
   font-weight: 700;
   color: var(--doc-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
-.doc-type-card-count {
+.doc-type-grid.expanded .doc-type-card-count {
   font-family: var(--doc-mono);
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 700;
-  color: var(--tc, var(--doc-accent));
+  color: var(--doc-text);
+  line-height: 1.1;
 }
+
+/* Couleurs label + count quand active */
+.doc-type-card.active .doc-type-card-label { color: var(--tc, var(--doc-accent)); }
+.doc-type-card.active .doc-type-card-count { color: var(--tc, var(--doc-accent)); }
+
+/* ── Barre active en bas ── */
 .doc-type-card-active-bar {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   height: 2.5px;
   background: var(--tc, var(--doc-accent));
+  border-radius: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
 }
+.doc-type-card.active .doc-type-card-active-bar {
+  transform: scaleX(1);
+}
+
+/* ── Animations d'entrée ── */
+@keyframes doc-card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.doc-type-grid.compact .doc-type-card {
+  animation: doc-card-in .3s ease-out both;
+}
+.doc-type-grid.compact .doc-type-card:nth-child(1) { animation-delay:  0ms; }
+.doc-type-grid.compact .doc-type-card:nth-child(2) { animation-delay: 30ms; }
+.doc-type-grid.compact .doc-type-card:nth-child(3) { animation-delay: 60ms; }
+.doc-type-grid.compact .doc-type-card:nth-child(4) { animation-delay: 90ms; }
+.doc-type-grid.compact .doc-type-card:nth-child(5) { animation-delay:120ms; }
+.doc-type-grid.compact .doc-type-card:nth-child(6) { animation-delay:150ms; }
 
 /* ══════════════════════════════════════════
    BARRE DE FILTRES
@@ -255,6 +444,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .doc-filter-type-badge {
@@ -353,6 +543,9 @@
   border-radius: var(--doc-r);
   overflow: hidden;
   overflow-x: auto;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .doc-table {
@@ -466,7 +659,6 @@
   border: 0.5px solid color-mix(in srgb, var(--bc, #5a7060) 30%, transparent);
 }
 
-/* Chip visibilité (panneau / liste) */
 .doc-vis-chip {
   display: inline-flex;
   align-items: center;
@@ -487,11 +679,9 @@
   border: 0.5px solid rgba(100,116,139,.22);
 }
 
-/* Petit chip dans la table */
 .doc-vis-chip-sm { font-size: 14px; }
-
-.doc-chip-sub   { font-size: 12px; color: var(--doc-muted); }
-.doc-status-dot {
+.doc-chip-sub    { font-size: 12px; color: var(--doc-muted); }
+.doc-status-dot  {
   width: 6px; height: 6px;
   border-radius: 50%;
   background: currentColor;
@@ -583,13 +773,16 @@
 .doc-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  justify-content: center; /* centre verticalement */
+  align-items: center;     /* centre horizontalement */
   text-align: center;
-  gap: 8px;
+  gap: 12px;               /* espace entre les éléments */
   padding: 52px 20px;
   background: var(--doc-bg2);
   border: 0.5px solid var(--doc-border);
   border-radius: var(--doc-r);
+  width: 100%;
+  min-height: 200px;       
 }
 .doc-empty-icon  { font-size: 38px; line-height: 1; }
 .doc-empty-title {
@@ -840,7 +1033,6 @@
 }
 .doc-btn-danger:hover { background: rgba(192,57,43,.15); }
 
-/* Bouton toggle visibilité dans le footer du panneau */
 .doc-btn-vis {
   display: inline-flex;
   align-items: center;
@@ -868,7 +1060,6 @@
 
 .doc-btn-sm { padding: 6px 12px; font-size: 12.5px; }
 
-/* Spinner dans bouton */
 .doc-btn-spinner {
   width: 12px; height: 12px;
   border-radius: 50%;
@@ -1033,6 +1224,20 @@
   border-top: 0.5px solid var(--doc-border2);
 }
 
+/* ── Fichier actuel ── */
+.doc-field-current-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.file-current {
+  font-size: 11.5px;
+  color: var(--doc-faint);
+  font-style: italic;
+}
+
 /* ── Toggle visibilité dans le formulaire ── */
 .doc-visibility-toggle {
   display: flex;
@@ -1082,7 +1287,9 @@
 }
 .doc-visibility-toggle.on .doc-vis-state { color: #6366f1; }
 
-/* ══ CONFIRMATION ══ */
+/* ══════════════════════════════════════════
+   CONFIRMATION
+══════════════════════════════════════════ */
 .doc-confirm {
   display: flex;
   flex-direction: column;
@@ -1103,7 +1310,9 @@
 }
 .doc-confirm strong { color: var(--doc-text); }
 
-/* ══ TOAST ══ */
+/* ══════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════ */
 .doc-toast {
   position: fixed;
   bottom: 24px; right: 24px;
@@ -1131,16 +1340,39 @@
 /* ══════════════════════════════════════════
    RESPONSIVE
 ══════════════════════════════════════════ */
-@media (max-width: 1200px) {
-  .doc-type-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1100px) {
+  .doc-type-grid.expanded {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
   :root { --doc-panel-w: 380px; }
 }
+
 @media (max-width: 900px) {
-  .doc-type-grid { grid-template-columns: repeat(3, 1fr); }
+  .doc-type-grid.compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+  .doc-type-grid.expanded {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .doc-type-grid.expanded .doc-type-card { padding: 12px 10px 10px; }
+  .doc-type-grid.expanded .doc-type-card-icon  { font-size: 20px; }
+  .doc-type-grid.expanded .doc-type-card-label { font-size: 11px; }
+  .doc-type-grid.expanded .doc-type-card-count { font-size: 19px; }
   :root { --doc-panel-w: 340px; }
 }
+
 @media (max-width: 768px) {
-  .doc-type-grid   { grid-template-columns: repeat(2, 1fr); }
+  .doc-type-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 10px;
+    padding: 16px 0 12px;
+  }
+  .doc-type-grid.expanded {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .doc-header      { flex-direction: column; align-items: stretch; }
   .doc-header-right { justify-content: space-between; }
   .doc-search-global { max-width: none; }
@@ -1150,10 +1382,16 @@
   .doc-form-grid   { grid-template-columns: 1fr; }
   .doc-field-span  { grid-column: 1; }
   .doc-pagination  { flex-direction: column; }
+  .doc-body        { padding: 0 16px; }
   :root { --doc-panel-w: 100vw; }
 }
+
 @media (max-width: 480px) {
-  .doc-section     { padding: 14px 16px; }
+  .doc-type-grid.compact,
+  .doc-type-grid.expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .doc-section     { padding: 14px 0; }
   .doc-header      { padding: 14px 16px; }
   .doc-modal-overlay { padding: 8px; align-items: flex-end; }
   .doc-modal-box   { max-height: 95vh; border-radius: var(--doc-r) var(--doc-r) 0 0; }

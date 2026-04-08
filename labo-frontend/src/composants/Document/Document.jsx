@@ -140,7 +140,7 @@ function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
             {isArticle && <th>Sous-type</th>}
             <th>Titre</th>
             <th>Auteur</th>
-            <th>Visibilité</th>
+            
             <th>Date</th>
             <th>Actions</th>
           </tr>
@@ -165,11 +165,7 @@ function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
                   {doc.auteur_nom || <span className="doc-faint">—</span>}
                 </td>
               
-              <td>
-                <span className={`doc-vis-chip-sm ${doc.visibilite ? "public" : "private"}`}>
-                  {doc.visibilite ? "🌐" : "🔒"}
-                </span>
-              </td>
+              
               <td className="doc-cell-date">
                 {new Date(doc.date_creation).toLocaleDateString("fr-FR")}
               </td>
@@ -603,6 +599,7 @@ export default function Document() {
   const [page,        setPage]        = useState(1);
   const [globalQ,     setGlobalQ]     = useState("");
   const perPage = 10;
+  const [expandedView, setExpandedView] = useState(false);
 
   /* ── Rôle courant ── */
   const currentUser   = getUserFromToken();
@@ -745,11 +742,25 @@ export default function Document() {
   };
 
   const selectType = t => {
+  if (activeType === t && expandedView) {
+    // Si on clique sur le même type déjà actif en vue étendue, on rétrécit
+    setExpandedView(false);
+    setActiveType(null);
+  } else if (activeType === t && !expandedView) {
+    // Si on clique sur le type actif mais vue compacte, on étend
+    setExpandedView(true);
+  } else {
+    // Nouveau type sélectionné
     setActiveType(t);
-    setSearch(""); setYearFilter("ALL"); setVisFilter("ALL");
+    setExpandedView(true);
+    setSearch("");
+    setYearFilter("ALL");
+    setVisFilter("ALL");
     setPage(1);
     setSelected(null);
-  };
+  }
+};
+
 
   const openAdd = () => setEditing({ __new: true, defaultType: activeType || DOCUMENT_TYPES[0] });
 
@@ -799,6 +810,7 @@ export default function Document() {
 
       {/* ══ BODY ══ */}
       <div className="doc-body">
+
         {globalQ.trim() ? (
           /* ── Résultats de recherche globale ── */
           <div className="doc-section">
@@ -825,28 +837,19 @@ export default function Document() {
           <>
             {/* ── Cartes de types ── */}
             <div className="doc-section">
-              <div className="doc-section-label">Mes documents par type</div>
-              {loading ? (
-                <div className="doc-loading">
-                  <div className="doc-spinner" /><span>Chargement…</span>
-                </div>
-              ) : error ? (
-                <div className="doc-error">
-                  <span>⚠ {error}</span>
-                  <button className="doc-btn-ghost doc-btn-sm" onClick={loadData}>Réessayer</button>
-                </div>
-              ) : (
-                <div className="doc-type-grid">
+              
+              {!loading && !error && (
+                <div className={`doc-type-grid ${expandedView ? 'expanded' : 'compact'}`}>
                   {DOCUMENT_TYPES.map(t => {
                     const m = TYPE_META[t];
-                    const count  = countByType[t];
+                    const count = countByType[t];
                     const active = activeType === t;
                     return (
                       <button
                         key={t}
                         className={`doc-type-card ${active ? "active" : ""} ${count === 0 ? "empty" : ""}`}
                         style={{ "--tc": m.color }}
-                        onClick={() => selectType(active ? null : t)}
+                        onClick={() => selectType(active ? t : t)}
                       >
                         <span className="doc-type-card-icon">{m.icon}</span>
                         <span className="doc-type-card-label">{m.label}</span>
@@ -876,6 +879,7 @@ export default function Document() {
                       placeholder="Filtrer…"
                       value={search}
                       onChange={e => { setSearch(e.target.value); setPage(1); }}
+                      style={{ backgroundColor: "#fefcfc"}}
                     />
                     {search && <button onClick={() => setSearch("")}>✕</button>}
                   </div>
@@ -885,6 +889,7 @@ export default function Document() {
                     className="doc-filter-sel"
                     value={yearFilter}
                     onChange={e => { setYearFilter(e.target.value); setPage(1); }}
+                    style={{ backgroundColor: "#fefcfc"}}
                   >
                     <option value="ALL">Toutes les années</option>
                     {years.map(y => <option key={y} value={y}>{y}</option>)}
@@ -895,6 +900,7 @@ export default function Document() {
                     className="doc-filter-sel"
                     value={visFilter}
                     onChange={e => { setVisFilter(e.target.value); setPage(1); }}
+                    style={{ backgroundColor: "#fefcfc"}}
                   >
                     <option value="ALL">Toutes visibilités</option>
                     <option value="PUBLIC">🌐 Public</option>
