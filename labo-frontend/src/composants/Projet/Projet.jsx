@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./Projet.css";
 
+/* ─────────────────────────────────────────────
+   CONSTANTS & HELPERS
+───────────────────────────────────────────── */
 const API_BASE = "http://localhost:8000/api";
 const getToken = () => localStorage.getItem("token");
 
@@ -16,14 +19,16 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-// ── BADGE STATUT ─────────────────────────────────────────────
-const statutColors = {
-  en_cours:    { bg: "#e8f0fe", color: "#1a73e8", label: "En cours" },
-  soumis:      { bg: "#fce8b2", color: "#f29900", label: "Soumis" },
-  en_revision: { bg: "#fce8b2", color: "#e37400", label: "En révision" },
-  accepte:     { bg: "#e6f4ea", color: "#1e8e3e", label: "Accepté" },
-  publie:      { bg: "#e6f4ea", color: "#0d652d", label: "Publié" },
-  retire:      { bg: "#fce8e6", color: "#c5221f", label: "Retiré" },
+/* ─────────────────────────────────────────────
+   STATUT CONFIG
+───────────────────────────────────────────── */
+const STATUT_CONFIG = {
+  en_cours:    { label: "En cours",    color: "#6366f1", bg: "rgba(99,102,241,.10)",  border: "rgba(99,102,241,.28)" },
+  soumis:      { label: "Soumis",      color: "#f59e0b", bg: "rgba(245,158,11,.10)",  border: "rgba(245,158,11,.28)" },
+  en_revision: { label: "En révision", color: "#f97316", bg: "rgba(249,115,22,.10)",  border: "rgba(249,115,22,.28)" },
+  accepte:     { label: "Accepté",     color: "#4a7c59", bg: "rgba(74,124,89,.10)",   border: "rgba(74,124,89,.28)" },
+  publie:      { label: "Publié",      color: "#0d9488", bg: "rgba(13,148,136,.10)",  border: "rgba(13,148,136,.28)" },
+  retire:      { label: "Retiré",      color: "#c0392b", bg: "rgba(192,57,43,.10)",   border: "rgba(192,57,43,.28)" },
 };
 
 const TYPE_ICONS = {
@@ -31,44 +36,50 @@ const TYPE_ICONS = {
   VIDEO: "🎬", CARTE: "🗺️", ARTICLE: "📰",
 };
 
+/* ─────────────────────────────────────────────
+   STATUT BADGE
+───────────────────────────────────────────── */
 function StatutBadge({ statut }) {
-  const s = statutColors[statut] || { bg: "#f1f3f4", color: "#5f6368", label: statut };
+  const s = STATUT_CONFIG[statut] || { label: statut, color: "#888", bg: "rgba(128,128,128,.10)", border: "rgba(128,128,128,.25)" };
   return (
-    <span className="pj-statut-badge" style={{ background: s.bg, color: s.color }}>
+    <span
+      className="pj-statut-badge"
+      style={{ color: s.color, background: s.bg, borderColor: s.border }}
+    >
+      <span className="pj-statut-dot" style={{ background: s.color }} />
       {s.label}
     </span>
   );
 }
 
-// ── MODAL ────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   MODAL (formulaire / confirmation)
+───────────────────────────────────────────── */
 function PjModal({ title, onClose, children, wide }) {
   return (
     <div className="pj-overlay" onClick={onClose}>
       <div className={`pj-modal ${wide ? "pj-modal-wide" : ""}`} onClick={e => e.stopPropagation()}>
-        <div className="pj-modal-head">
-          <span className="pj-modal-title">{title}</span>
-          <button className="pj-modal-x" onClick={onClose}>✕</button>
-        </div>
+        {title && (
+          <div className="pj-modal-head">
+            <span className="pj-modal-title">{title}</span>
+            <button className="pj-modal-x" onClick={onClose}>✕</button>
+          </div>
+        )}
         <div className="pj-modal-body">{children}</div>
       </div>
     </div>
   );
 }
 
-// ── FORM ─────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   FORMULAIRE PROJET
+───────────────────────────────────────────── */
 function ProjetForm({ initial, onSubmit, onCancel, loading }) {
   const [form, setForm] = useState({
-    titre:             "",
-    description:       "",
-    domaine:           "",
-    mots_cles:         "",
-    annee_publication: "",
-    date_debut:        "",
-    date_fin:          "",
-    statut:            "en_cours",
+    titre: "", description: "", domaine: "", mots_cles: "",
+    annee_publication: "", date_debut: "", date_fin: "", statut: "en_cours",
     ...(initial || {}),
   });
-
   const [participantEmail,     setParticipantEmail]     = useState("");
   const [participants,         setParticipants]         = useState(
     initial?.participants?.map(p => ({ id: p.id, nom: p.nom, email: p.email })) || []
@@ -78,7 +89,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const addParticipantByEmail = async () => {
+  const addParticipant = async () => {
     setParticipantError("");
     const val = participantEmail.trim();
     if (!val) return;
@@ -86,57 +97,55 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
     try {
       const users = await apiFetch(`/utilisateur?email=${encodeURIComponent(val)}`);
       const user  = Array.isArray(users) ? users[0] : users;
-      if (!user?.id) { setParticipantError("Aucun utilisateur trouvé avec cet email."); return; }
-      if (participants.some(p => p.id === user.id)) { setParticipantError("Ce participant est déjà dans la liste."); return; }
+      if (!user?.id) { setParticipantError("Aucun utilisateur trouvé."); return; }
+      if (participants.some(p => p.id === user.id)) { setParticipantError("Participant déjà ajouté."); return; }
       setParticipants(prev => [...prev, { id: user.id, nom: user.nom, email: user.email }]);
       setParticipantEmail("");
-    } catch {
-      setParticipantError("Utilisateur introuvable ou erreur serveur.");
-    } finally { setParticipantSearching(false); }
+    } catch { setParticipantError("Utilisateur introuvable ou erreur serveur."); }
+    finally { setParticipantSearching(false); }
   };
 
   const removeParticipant = id => setParticipants(prev => prev.filter(p => p.id !== id));
 
   const handleSubmit = e => {
     e.preventDefault();
-    const body = {};
-    Object.entries(form).forEach(([k, v]) => {
-      if (v !== null && v !== undefined && v !== "") body[k] = v;
-    });
-    const creatorId          = initial?.createur_id;
-    const participantsToSync = creatorId
-      ? participants.filter(p => p.id !== creatorId)
-      : participants;
-    onSubmit(body, participantsToSync);
+    const body = Object.fromEntries(
+      Object.entries(form).filter(([, v]) => v !== null && v !== undefined && v !== "")
+    );
+    const creatorId = initial?.createur_id;
+    const toSync    = creatorId ? participants.filter(p => p.id !== creatorId) : participants;
+    onSubmit(body, toSync);
   };
 
   return (
     <form className="pj-form" onSubmit={handleSubmit}>
+      {/* ── Section 1 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Informations générales</div>
         <div className="pj-field pj-full">
-          <label>Titre *</label>
+          <label>Titre <em>*</em></label>
           <input required value={form.titre} onChange={e => set("titre", e.target.value)} placeholder="Titre du projet" />
         </div>
         <div className="pj-field pj-full">
           <label>Description</label>
-          <textarea rows={4} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Description du projet..." />
+          <textarea rows={4} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Description du projet…" />
         </div>
         <div className="pj-field">
           <label>Statut</label>
           <select value={form.statut} onChange={e => set("statut", e.target.value)}>
-            {Object.entries(statutColors).map(([k, v]) => (
+            {Object.entries(STATUT_CONFIG).map(([k, v]) => (
               <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
         </div>
       </div>
 
+      {/* ── Section 2 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Métadonnées</div>
         <div className="pj-field">
           <label>Domaine</label>
-          <input value={form.domaine} onChange={e => set("domaine", e.target.value)} placeholder="ex: Informatique, Biologie..." />
+          <input value={form.domaine} onChange={e => set("domaine", e.target.value)} placeholder="ex: Informatique, Biologie…" />
         </div>
         <div className="pj-field">
           <label>Année de publication</label>
@@ -145,7 +154,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
         </div>
         <div className="pj-field pj-full">
           <label>Mots-clés</label>
-          <input value={form.mots_cles} onChange={e => set("mots_cles", e.target.value)} placeholder="mot1, mot2, mot3..." />
+          <input value={form.mots_cles} onChange={e => set("mots_cles", e.target.value)} placeholder="mot1, mot2, mot3…" />
         </div>
         <div className="pj-field">
           <label>Date de début</label>
@@ -157,17 +166,22 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
         </div>
       </div>
 
+      {/* ── Section 3 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Participants</div>
         <div className="pj-field pj-full">
-          <label>Ajouter un participant par email</label>
+          <label>Ajouter par email</label>
           <div className="pj-participant-add-row">
-            <input type="email" value={participantEmail}
+            <input
+              type="email"
+              value={participantEmail}
               onChange={e => { setParticipantEmail(e.target.value); setParticipantError(""); }}
-              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addParticipantByEmail())}
-              placeholder="email@exemple.com" className="pj-participant-email-input" />
+              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addParticipant())}
+              placeholder="email@exemple.com"
+              className="pj-participant-email-input"
+            />
             <button type="button" className="pj-btn-add-participant"
-              onClick={addParticipantByEmail} disabled={participantSearching}>
+              onClick={addParticipant} disabled={participantSearching}>
               {participantSearching ? "Recherche…" : "+ Ajouter"}
             </button>
           </div>
@@ -187,7 +201,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
                     <span className="pj-chip-creator">Créateur</span>
                   ) : (
                     <button type="button" className="pj-chip-remove"
-                      onClick={() => removeParticipant(p.id)} title="Retirer">✕</button>
+                      onClick={() => removeParticipant(p.id)}>✕</button>
                   )}
                 </div>
               ))}
@@ -199,33 +213,39 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
       <div className="pj-form-actions">
         <button type="button" className="pj-btn-ghost" onClick={onCancel}>Annuler</button>
         <button type="submit" className="pj-btn-primary" disabled={loading}>
-          {loading ? "Enregistrement…" : initial ? "✎ Modifier" : "+ Créer"}
+          {loading ? (
+            <><span className="pj-btn-spinner" /> Enregistrement…</>
+          ) : initial ? (
+            <>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+              Enregistrer
+            </>
+          ) : (
+            <>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Créer le projet
+            </>
+          )}
         </button>
       </div>
     </form>
   );
 }
 
-// ── DOCUMENT ROW dans le détail projet ───────────────────────
-// Affiche nom + icône type + lien cliquable pour ouvrir le fichier
+/* ─────────────────────────────────────────────
+   DOCUMENT ROW (dans le détail)
+───────────────────────────────────────────── */
 function ProjetDocRow({ doc }) {
-  const fileUrl = doc.lien
-    ? `http://localhost:8000/${doc.lien.replace(/\\/g, "/")}`
-    : null;
-
-  const ext = doc.lien ? doc.lien.split(".").pop().toLowerCase() : "";
-  const isImg = ["jpg", "jpeg", "png", "gif", "svg", "webp"].includes(ext);
-  const isPdf = ext === "pdf";
-  const isVid = ["mp4", "webm", "avi", "mov", "mkv"].includes(ext);
-
+  const fileUrl = doc.lien ? `http://localhost:8000/${doc.lien.replace(/\\/g, "/")}` : null;
+  const ext     = doc.lien ? doc.lien.split(".").pop().toLowerCase() : "";
+  const isImg   = ["jpg","jpeg","png","gif","svg","webp"].includes(ext);
+  const isPdf   = ext === "pdf";
+  const isVid   = ["mp4","webm","avi","mov","mkv"].includes(ext);
   const [preview, setPreview] = useState(false);
 
   return (
     <div className="pj-doc-row">
-      {/* Icône type */}
       <span className="pj-doc-type-icon">{TYPE_ICONS[doc.type] || "📄"}</span>
-
-      {/* Infos */}
       <div className="pj-doc-info">
         <span className="pj-doc-titre">{doc.titre}</span>
         <div className="pj-doc-meta">
@@ -234,26 +254,16 @@ function ProjetDocRow({ doc }) {
           {doc.auteur_nom && <span className="pj-doc-auteur">— {doc.auteur_nom}</span>}
         </div>
       </div>
-
-      {/* Actions */}
       <div className="pj-doc-actions">
         {fileUrl ? (
           <>
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="pj-doc-btn pj-doc-btn-open"
-              title="Ouvrir le fichier"
-            >
-              👁️ Ouvrir
+            <a href={fileUrl} target="_blank" rel="noreferrer"
+              className="pj-doc-btn pj-doc-btn-open">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Ouvrir
             </a>
             {(isImg || isPdf || isVid) && (
-              <button
-                className="pj-doc-btn pj-doc-btn-preview"
-                onClick={() => setPreview(v => !v)}
-                title="Aperçu"
-              >
+              <button className="pj-doc-btn pj-doc-btn-preview" onClick={() => setPreview(v => !v)}>
                 {preview ? "▲ Fermer" : "▼ Aperçu"}
               </button>
             )}
@@ -262,177 +272,199 @@ function ProjetDocRow({ doc }) {
           <span className="pj-doc-no-file">Pas de fichier</span>
         )}
       </div>
-
-      {/* Aperçu inline */}
       {preview && fileUrl && (
         <div className="pj-doc-preview">
-          {isImg && <img src={fileUrl} alt={doc.titre} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 6 }} />}
-          {isPdf && <iframe src={fileUrl} title={doc.titre} style={{ width: "100%", height: 300, borderRadius: 6, border: "1px solid #ddd" }} />}
-          {isVid && <video controls style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 6 }}><source src={fileUrl} /></video>}
+          {isImg && <img src={fileUrl} alt={doc.titre} />}
+          {isPdf && <iframe src={fileUrl} title={doc.titre} />}
+          {isVid && <video controls><source src={fileUrl} /></video>}
         </div>
       )}
     </div>
   );
 }
 
-// ── DETAIL PROJET ────────────────────────────────────────────
-function ProjetDetail({ projet, onClose, onDelete, onEdit }) {
-  const auteurs = projet.participants?.map(p => p.nom).join(", ") || "—";
+/* ─────────────────────────────────────────────
+   PANNEAU DÉTAIL (slide-in latéral)
+───────────────────────────────────────────── */
+function DetailPanel({ projet, onClose, onEdit, onDelete }) {
+  const s = STATUT_CONFIG[projet.statut] || STATUT_CONFIG.en_cours;
 
   return (
-    <PjModal title="" onClose={onClose} wide>
-      <div className="pj-detail">
-        <h2 className="pj-detail-title">{projet.titre}</h2>
+    <>
+      <div className="pj-panel-backdrop" onClick={onClose} />
+      <div className="pj-detail-panel">
 
-        <div className="pj-detail-meta-grid">
-          {projet.participants?.length > 0 && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Participants</span>
-              <span className="pj-meta-val">{auteurs}</span>
-            </div>
-          )}
-          {projet.createur_nom && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Créateur</span>
-              <span className="pj-meta-val">{projet.createur_nom}</span>
-            </div>
-          )}
-          {projet.annee_publication && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Année</span>
-              <span className="pj-meta-val">{projet.annee_publication}</span>
-            </div>
-          )}
-          {projet.domaine && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Domaine</span>
-              <span className="pj-meta-val">{projet.domaine}</span>
-            </div>
-          )}
-          {projet.date_debut && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Date de début</span>
-              <span className="pj-meta-val">{new Date(projet.date_debut).toLocaleDateString("fr-FR")}</span>
-            </div>
-          )}
-          {projet.date_fin && (
-            <div className="pj-meta-row">
-              <span className="pj-meta-key">Date de fin</span>
-              <span className="pj-meta-val">{new Date(projet.date_fin).toLocaleDateString("fr-FR")}</span>
-            </div>
-          )}
-          <div className="pj-meta-row">
-            <span className="pj-meta-key">Statut</span>
-            <span className="pj-meta-val"><StatutBadge statut={projet.statut} /></span>
+        {/* Header */}
+        <div className="pj-panel-header" style={{ "--pc": s.color }}>
+          <div className="pj-panel-header-left">
+            <span className="pj-panel-header-title">Détail du projet</span>
           </div>
+          <button className="pj-panel-close" onClick={onClose}>✕</button>
         </div>
 
-        {projet.description && (
-          <div className="pj-detail-desc-block">
-            <span className="pj-meta-key">Description</span>
-            <p className="pj-detail-desc-text">{projet.description}</p>
-          </div>
-        )}
+        {/* Corps */}
+        <div className="pj-panel-body">
 
-        {projet.mots_cles && (
-          <div className="pj-detail-keywords">
-            {projet.mots_cles.split(",").map((k, i) => (
-              <span key={i} className="pj-keyword-chip">{k.trim()}</span>
-            ))}
+          {/* Hero */}
+          <div className="pj-panel-hero" style={{ borderLeftColor: s.color, background: `${s.color}0d` }}>
+            <h2 className="pj-panel-titre">{projet.titre}</h2>
+            <div className="pj-panel-chips">
+              <StatutBadge statut={projet.statut} />
+              {projet.domaine && (
+                <span className="pj-panel-domaine">{projet.domaine}</span>
+              )}
+            </div>
           </div>
-        )}
 
-        {/* ── Documents du projet avec liens cliquables ── */}
-        <div className="pj-detail-docs-section">
-          <div className="pj-detail-docs-header">
-            <span className="pj-meta-key">
-              Documents ({projet.documents?.length || 0})
+          {/* Métadonnées */}
+          <dl className="pj-panel-meta">
+            {projet.createur_nom && (
+              <><dt>Créateur</dt><dd>{projet.createur_nom}</dd></>
+            )}
+            {projet.participants?.length > 0 && (
+              <><dt>Participants</dt>
+              <dd>
+                <div className="pj-panel-participants">
+                  {projet.participants.map(p => (
+                    <span key={p.id} className="pj-panel-participant">
+                      <span className="pj-panel-participant-av">{p.nom?.[0]?.toUpperCase()}</span>
+                      {p.nom}
+                    </span>
+                  ))}
+                </div>
+              </dd></>
+            )}
+            {projet.annee_publication && (
+              <><dt>Année</dt><dd>{projet.annee_publication}</dd></>
+            )}
+            {projet.date_debut && (
+              <><dt>Date début</dt><dd>{new Date(projet.date_debut).toLocaleDateString("fr-FR")}</dd></>
+            )}
+            {projet.date_fin && (
+              <><dt>Date fin</dt><dd>{new Date(projet.date_fin).toLocaleDateString("fr-FR")}</dd></>
+            )}
+            {projet.mots_cles && (
+              <><dt>Mots-clés</dt>
+              <dd>
+                <div className="pj-panel-keywords">
+                  {projet.mots_cles.split(",").map((k, i) => (
+                    <span key={i} className="pj-keyword-chip">{k.trim()}</span>
+                  ))}
+                </div>
+              </dd></>
+            )}
+          </dl>
+
+          {/* Description */}
+          {projet.description && (
+            <div className="pj-panel-desc">
+              <span className="pj-panel-section-label">Description</span>
+              <p>{projet.description}</p>
+            </div>
+          )}
+
+          {/* Documents */}
+          <div className="pj-panel-docs">
+            <span className="pj-panel-section-label">
+              Documents
+              <span className="pj-panel-docs-count">{projet.documents?.length || 0}</span>
             </span>
+            {!projet.documents || projet.documents.length === 0 ? (
+              <div className="pj-no-docs">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Aucun document associé</span>
+              </div>
+            ) : (
+              <div className="pj-docs-list">
+                {projet.documents.map(doc => (
+                  <ProjetDocRow key={doc.id} doc={doc} />
+                ))}
+              </div>
+            )}
           </div>
-
-          {!projet.documents || projet.documents.length === 0 ? (
-            <div className="pj-no-docs">
-              <span>📂</span>
-              <span>Aucun document associé à ce projet</span>
-            </div>
-          ) : (
-            <div className="pj-docs-list">
-              {projet.documents.map(doc => (
-                <ProjetDocRow key={doc.id} doc={doc} />
-              ))}
-            </div>
-          )}
         </div>
 
-        <div className="pj-detail-actions">
-          <button className="pj-btn-ghost" onClick={() => onEdit(projet)}>✎ Modifier</button>
-          <button className="pj-btn-danger" onClick={() => onDelete(projet.id)}>⊘ Supprimer</button>
+        {/* Footer actions */}
+        <div className="pj-panel-footer">
+          <button className="pj-btn-ghost" onClick={() => onEdit(projet)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+            Modifier
+          </button>
+          <button className="pj-btn-danger" onClick={() => onDelete(projet.id)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Supprimer
+          </button>
         </div>
       </div>
-    </PjModal>
+    </>
   );
 }
 
-// ── SCHOLAR SIDEBAR ───────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   SIDEBAR SCHOLAR
+───────────────────────────────────────────── */
 function ScholarSidebar({ projets }) {
   const [showAll, setShowAll] = useState(false);
-  const safeProjets = projets || [];
+  const safe = projets || [];
 
-  const totalPubs       = safeProjets.length;
-  const publie          = safeProjets.filter(p => p.statut === "publie").length;
-  const enCours         = safeProjets.filter(p => p.statut === "en_cours").length;
+  const publie  = safe.filter(p => p.statut === "publie").length;
+  const enCours = safe.filter(p => p.statut === "en_cours").length;
 
-  const coauteurMap = {};
-  safeProjets.forEach(p => {
+  const coMap = {};
+  safe.forEach(p => {
     (p.participants || []).forEach(u => {
-      if (!coauteurMap[u.id])
-        coauteurMap[u.id] = { id: u.id, nom: u.nom, email: u.email, count: 0 };
-      coauteurMap[u.id].count += 1;
+      if (!coMap[u.id]) coMap[u.id] = { id: u.id, nom: u.nom, email: u.email, count: 0 };
+      coMap[u.id].count += 1;
     });
   });
-  const coauteurs        = Object.values(coauteurMap).sort((a, b) => b.count - a.count);
-  const visibleCoauteurs = showAll ? coauteurs : coauteurs.slice(0, 6);
+  const coauteurs = Object.values(coMap).sort((a, b) => b.count - a.count);
+  const visible   = showAll ? coauteurs : coauteurs.slice(0, 6);
+
+  const statRows = [
+    { label: "Total",    value: safe.length },
+    { label: "Publiés",  value: publie },
+    { label: "En cours", value: enCours },
+    { label: "Participants", value: coauteurs.length },
+  ];
 
   return (
     <aside className="pj-sidebar">
+
+      {/* Stats */}
       <div className="pj-sidebar-card">
         <div className="pj-sidebar-card-title">Statistiques</div>
-        <table className="pj-scholar-stat-table">
-          <thead><tr><th></th><th>Total</th><th>Publiés</th></tr></thead>
-          <tbody>
-            <tr><td className="pj-stat-label">Projets</td><td className="pj-stat-val">{totalPubs}</td><td className="pj-stat-val">{publie}</td></tr>
-            <tr><td className="pj-stat-label">Participants</td><td className="pj-stat-val">{coauteurs.length}</td><td className="pj-stat-val">—</td></tr>
-            <tr><td className="pj-stat-label">En cours</td><td className="pj-stat-val">{enCours}</td><td className="pj-stat-val">—</td></tr>
-          </tbody>
-        </table>
+        <div className="pj-stat-list">
+          {statRows.map(r => (
+            <div key={r.label} className="pj-stat-row">
+              <span className="pj-stat-label">{r.label}</span>
+              <span className="pj-stat-value">{r.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
+      {/* Participants */}
       {coauteurs.length > 0 && (
         <div className="pj-sidebar-card">
           <div className="pj-sidebar-card-title">
             Participants
             {coauteurs.length > 6 && (
-              <span className="pj-sidebar-voir-tout" onClick={() => setShowAll(s => !s)}>
-                {showAll ? "RÉDUIRE" : "TOUT AFFICHER"}
-              </span>
+              <button className="pj-sidebar-toggle" onClick={() => setShowAll(s => !s)}>
+                {showAll ? "Réduire" : `Tout afficher (${coauteurs.length})`}
+              </button>
             )}
           </div>
           <div className="pj-coauteurs-list">
-            {visibleCoauteurs.map(c => (
+            {visible.map(c => (
               <div key={c.id} className="pj-coauteur-row">
                 <div className="pj-coauteur-avatar">{c.nom?.[0]?.toUpperCase()}</div>
                 <div className="pj-coauteur-info">
                   <span className="pj-coauteur-nom">{c.nom}</span>
                   {c.email && <span className="pj-coauteur-email">{c.email}</span>}
                 </div>
-                <span className="pj-coauteur-arrow">›</span>
+                <span className="pj-coauteur-count">{c.count}</span>
               </div>
             ))}
-            {!showAll && coauteurs.length > 6 && (
-              <div style={{ textAlign: "center", padding: "6px 0", fontSize: 12, color: "#5f6368" }}>
-                +{coauteurs.length - 6} autres
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -440,7 +472,9 @@ function ScholarSidebar({ projets }) {
   );
 }
 
-// ── MAIN ─────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   COMPOSANT PRINCIPAL
+───────────────────────────────────────────── */
 export default function Projet({ user, showOnlyUserProjets = false }) {
   const [projets,      setProjets]      = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -456,17 +490,19 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
   const [confirm,     setConfirm]     = useState(null);
   const [toast,       setToast]       = useState(null);
 
+  /* ── Toast ── */
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3200);
   };
 
+  /* ── Chargement ── */
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const data = await apiFetch("/projet");
       const list = showOnlyUserProjets && user
-        ? data.filter(p => p.participants?.some(x => x.id === user.id))
+        ? data.filter(p => p.participants?.some(x => x.id === user.id || x.id === String(user.id)))
         : data;
       setProjets(list);
     } catch (e) { setError(e.message); }
@@ -475,6 +511,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  /* ── Filtrage ── */
   const filtered = projets.filter(p => {
     const q = search.toLowerCase();
     const matchQ = !q
@@ -482,13 +519,15 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
       || p.description?.toLowerCase().includes(q)
       || p.mots_cles?.toLowerCase().includes(q)
       || p.domaine?.toLowerCase().includes(q)
-      || p.createur_nom?.toLowerCase().includes(q);
+      || p.createur_nom?.toLowerCase().includes(q)
+      || p.participants?.some(x => x.nom?.toLowerCase().includes(q));
     return matchQ && (!filterStatut || p.statut === filterStatut);
   });
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
 
+  /* ── CRUD ── */
   const handleCreate = async (body, participants) => {
     setFormLoading(true);
     try {
@@ -506,7 +545,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
           });
         } catch { /* ignore */ }
       }
-      showToast("Projet créé ✓");
+      showToast("Projet créé avec succès ✓");
       setEditing(null);
       loadData();
     } catch (e) { showToast(e.message, "error"); }
@@ -560,70 +599,115 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  // openDetail charge le détail complet (avec documents et leurs liens)
   const openDetail = async p => {
     try { setSelected(await apiFetch(`/projet/${p.id}`)); }
     catch { setSelected(p); }
   };
 
+  const resetFilters = () => { setSearch(""); setFilterStatut(""); setCurrentPage(1); };
+
+  /* ─────────────────────────────────────────────
+     RENDER
+  ───────────────────────────────────────────── */
   return (
     <div className="pj-root">
-      {toast && <div className={`pj-toast pj-toast-${toast.type}`}>{toast.msg}</div>}
 
-      <div className="pj-header">
-        <div className="pj-header-left">
-          <h1 className="pj-page-title">Projets</h1>
-          <p className="pj-page-sub">Gérez vos projets de recherche</p>
+      {/* Toast */}
+      {toast && (
+        <div className={`pj-toast pj-toast-${toast.type}`}>
+          {toast.type === "success" ? "✓" : "⚠"} {toast.msg}
         </div>
-        <button className="pj-btn-primary pj-btn-new" onClick={() => setEditing(true)}>
-          + Nouveau projet
+      )}
+
+      {/* ── Topbar ── */}
+      <div className="pj-topbar">
+        <div className="pj-topbar-left">
+          <h1 className="pj-page-title">Projets</h1>
+          {!loading && (
+            <span className="pj-count-pill">{projets.length} projet{projets.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+        <button className="pj-btn-primary" onClick={() => setEditing(true)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Nouveau projet
         </button>
       </div>
 
+      {/* ── Toolbar ── */}
       <div className="pj-toolbar">
         <div className="pj-search-wrap">
-          <span className="pj-search-icon">🔍</span>
-          <input className="pj-search-input" placeholder="Rechercher..."
-            value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }} />
+          <svg className="pj-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            className="pj-search-input"
+            placeholder="Rechercher titre, domaine, participants…"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          />
           {search && <button className="pj-search-clear" onClick={() => setSearch("")}>✕</button>}
         </div>
-        <select className="pj-filter-select" value={filterStatut}
-          onChange={e => { setFilterStatut(e.target.value); setCurrentPage(1); }}>
+
+        <select
+          className="pj-filter-select"
+          value={filterStatut}
+          onChange={e => { setFilterStatut(e.target.value); setCurrentPage(1); }}
+        >
           <option value="">Tous les statuts</option>
-          {Object.entries(statutColors).map(([k, v]) => (
+          {Object.entries(STATUT_CONFIG).map(([k, v]) => (
             <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
+
         <button className="pj-btn-refresh" onClick={loadData} disabled={loading} title="Actualiser">
-          <span className={loading ? "pj-spin" : ""}>↺</span>
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+            className={loading ? "pj-spin" : ""}
+          >
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
         </button>
       </div>
 
+      {/* ── Body ── */}
       <div className="pj-body-layout">
+
+        {/* Colonne principale */}
         <div className="pj-main-col">
           {loading ? (
-            <div className="pj-center-state"><div className="pj-spinner" /><span>Chargement...</span></div>
+            <div className="pj-state-center">
+              <div className="pj-spinner" />
+              <span>Chargement des projets…</span>
+            </div>
           ) : error ? (
-            <div className="pj-center-state pj-err">
-              <span>⚠ {error}</span>
-              <button className="pj-btn-ghost" onClick={loadData}>Réessayer</button>
+            <div className="pj-state-center pj-state-err">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>{error}</span>
+              <button className="pj-btn-ghost pj-btn-sm" onClick={loadData}>Réessayer</button>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="pj-center-state">
-              <span style={{ fontSize: 40 }}>📁</span>
+            <div className="pj-state-center">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               <span>Aucun projet trouvé</span>
-              {search && <button className="pj-btn-ghost" onClick={() => setSearch("")}>Effacer</button>}
+              {(search || filterStatut) && (
+                <button className="pj-btn-ghost pj-btn-sm" onClick={resetFilters}>Effacer les filtres</button>
+              )}
             </div>
           ) : (
             <>
+              {/* En-tête tableau */}
+              <div className="pj-list-header">
+                <span className="pj-col-title">Titre</span>
+                <span className="pj-col-center">Participants</span>
+                <span className="pj-col-center">Année</span>
+                <span className="pj-col-center">Statut</span>
+                <span className="pj-col-center">Actions</span>
+              </div>
+
+              {/* Lignes */}
               <div className="pj-list">
-                <div className="pj-list-header">
-                  <span className="pj-list-col-title">TITRE</span>
-                  <span className="pj-list-col">PARTICIPANTS</span>
-                  <span className="pj-list-col">ANNÉE</span>
-                  <span className="pj-list-col">STATUT</span>
-                  <span className="pj-list-col">ACTIONS</span>
-                </div>
                 {paginated.map(p => (
                   <div key={p.id} className="pj-list-row" onClick={() => openDetail(p)}>
                     <div className="pj-list-main">
@@ -633,7 +717,9 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
                           {p.participants.map(x => x.nom).join(", ")}
                         </div>
                       )}
-                      {p.domaine && <div className="pj-list-journal">{p.domaine}</div>}
+                      {p.domaine && (
+                        <div className="pj-list-domaine">{p.domaine}</div>
+                      )}
                       {p.mots_cles && (
                         <div className="pj-list-keywords">
                           {p.mots_cles.split(",").slice(0, 4).map((k, i) => (
@@ -642,21 +728,43 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
                         </div>
                       )}
                     </div>
-                    <div className="pj-list-col pj-cited">
-                      <span className="pj-cited-val">{p.participants?.length || 0}</span>
+
+                    <div className="pj-col-center">
+                      <span className="pj-participants-count">{p.participants?.length || 0}</span>
                     </div>
-                    <div className="pj-list-col pj-year">{p.annee_publication || "—"}</div>
-                    <div className="pj-list-col"><StatutBadge statut={p.statut} /></div>
-                    <div className="pj-list-col pj-actions-col" onClick={e => e.stopPropagation()}>
-                      <button className="pj-act-btn" title="Modifier" onClick={() => { setEditing(p); setSelected(null); }}>✎</button>
-                      <button className="pj-act-btn pj-act-del" title="Supprimer" onClick={() => setConfirm(p.id)}>⊘</button>
+
+                    <div className="pj-col-center pj-year">
+                      {p.annee_publication || "—"}
+                    </div>
+
+                    <div className="pj-col-center">
+                      <StatutBadge statut={p.statut} />
+                    </div>
+
+                    <div className="pj-col-center pj-actions-col" onClick={e => e.stopPropagation()}>
+                      <button
+                        className="pj-act-btn"
+                        title="Modifier"
+                        onClick={() => { setEditing(p); setSelected(null); }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+                      </button>
+                      <button
+                        className="pj-act-btn pj-act-del"
+                        title="Supprimer"
+                        onClick={() => setConfirm(p.id)}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="pj-list-footer">{filtered.length} projet(s) trouvé(s)</div>
+              {/* Footer */}
+              <div className="pj-list-footer">{filtered.length} projet{filtered.length !== 1 ? "s" : ""}</div>
 
+              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="pj-pagination">
                   <span className="pj-page-info">Page {currentPage} / {totalPages}</span>
@@ -665,7 +773,13 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
                     {[...Array(totalPages)].map((_, i) => {
                       const n = i + 1;
                       if (n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
-                        return <button key={n} className={`pj-page-btn ${currentPage === n ? "pj-page-active" : ""}`} onClick={() => setCurrentPage(n)}>{n}</button>;
+                        return (
+                          <button
+                            key={n}
+                            className={`pj-page-btn ${currentPage === n ? "pj-page-active" : ""}`}
+                            onClick={() => setCurrentPage(n)}
+                          >{n}</button>
+                        );
                       if (Math.abs(n - currentPage) === 2) return <span key={n} className="pj-page-dots">…</span>;
                       return null;
                     })}
@@ -676,34 +790,44 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             </>
           )}
         </div>
+
+        {/* Sidebar */}
         <ScholarSidebar projets={projets} />
       </div>
 
+      {/* ── Panneau détail (slide-in) ── */}
+      {selected && !editing && (
+        <DetailPanel
+          projet={selected}
+          onClose={() => setSelected(null)}
+          onEdit={p => { setEditing(p); setSelected(null); }}
+          onDelete={id => { setConfirm(id); setSelected(null); }}
+        />
+      )}
+
+      {/* ── Modal création ── */}
       {editing === true && (
         <PjModal title="Nouveau projet" onClose={() => setEditing(null)} wide>
           <ProjetForm onSubmit={handleCreate} onCancel={() => setEditing(null)} loading={formLoading} />
         </PjModal>
       )}
+
+      {/* ── Modal édition ── */}
       {editing && editing !== true && (
         <PjModal title={`Modifier — ${editing.titre}`} onClose={() => setEditing(null)} wide>
           <ProjetForm initial={editing} onSubmit={handleUpdate} onCancel={() => setEditing(null)} loading={formLoading} />
         </PjModal>
       )}
-      {selected && !editing && (
-        <ProjetDetail
-          projet={selected}
-          onClose={() => setSelected(null)}
-          onDelete={id => { setConfirm(id); setSelected(null); }}
-          onEdit={p => { setEditing(p); setSelected(null); }}
-        />
-      )}
+
+      {/* ── Modal confirmation suppression ── */}
       {confirm && (
         <PjModal title="Confirmer la suppression" onClose={() => setConfirm(null)}>
           <div className="pj-confirm">
-            <p>⚠ Cette action est <strong>irréversible</strong>.</p>
+            <div className="pj-confirm-icon">🗑️</div>
+            <p>Cette action est <strong>irréversible</strong>. Le projet sera définitivement supprimé.</p>
             <div className="pj-form-actions">
               <button className="pj-btn-ghost" onClick={() => setConfirm(null)}>Annuler</button>
-              <button className="pj-btn-danger" onClick={() => handleDelete(confirm)}>⊘ Supprimer</button>
+              <button className="pj-btn-danger" onClick={() => handleDelete(confirm)}>Supprimer</button>
             </div>
           </div>
         </PjModal>

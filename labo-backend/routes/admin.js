@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const auth = require("../middleware/auth");
 
 const { sendValidationEmail } = require("../config/email");
 
@@ -18,33 +18,6 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
 });
 
-// ─── MIDDLEWARE JWT ────────────────────────────────────────────────────────────
-function verifyToken(req,res,next){
- try{
-
-   const auth=req.headers.authorization;
-
-   if(!auth || !auth.startsWith("Bearer ")){
-     return res.status(401).json({
-       error:"Token manquant"
-     });
-   }
-
-   const token=auth.split(" ")[1];
-
-   req.user=jwt.verify(
-     token,
-     process.env.JWT_SECRET
-   );
-
-   next();
-
- }catch{
-   res.status(401).json({
-     error:"Token invalide"
-   });
- }
-}
 
 function requireAdmin(req,res,next){
  if(req.user?.role !== "ADMIN"){
@@ -56,7 +29,7 @@ function requireAdmin(req,res,next){
 }
 // ─── STATS ────────────────────────────────────────────────────────────────────
 // GET /api/admin/stats
-router.get('/stats', verifyToken, requireAdmin, async (req, res) => {
+router.get('/stats', auth, requireAdmin, async (req, res) => {
   try {
     const [u, d, p, pub, recent] = await Promise.all([
       pool.query("SELECT COUNT(*) FROM utilisateur WHERE actif = TRUE"),
@@ -80,7 +53,7 @@ router.get('/stats', verifyToken, requireAdmin, async (req, res) => {
 
 // ─── UTILISATEURS ─────────────────────────────────────────────────────────────
 // GET /api/admin/utilisateurs
-router.get('/utilisateurs', verifyToken, requireAdmin, async (req, res) => {
+router.get('/utilisateurs', auth, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT id, nom, email, num_telephone, role, actif, email_confirme, compte_verrouille, tentatives_login, date_inscription FROM utilisateur ORDER BY date_inscription DESC"
@@ -93,7 +66,7 @@ router.get('/utilisateurs', verifyToken, requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/utilisateurs
-router.post('/utilisateurs', verifyToken, requireAdmin, async (req,res)=>{
+router.post('/utilisateurs', auth, requireAdmin, async (req,res)=>{
 
  try{
 
@@ -157,7 +130,7 @@ const allowedRoles = [
   "INVITE",
   "CADRE_TECHNIQUE"
 ];
-router.put('/utilisateurs/:id', verifyToken, requireAdmin, async (req,res)=>{
+router.put('/utilisateurs/:id', auth, requireAdmin, async (req,res)=>{
 
  try{
 
@@ -233,7 +206,7 @@ router.put('/utilisateurs/:id', verifyToken, requireAdmin, async (req,res)=>{
 
 });
 // DELETE /api/admin/utilisateurs/:id
-router.delete('/utilisateurs/:id', verifyToken, requireAdmin, async (req,res)=>{
+router.delete('/utilisateurs/:id', auth, requireAdmin, async (req,res)=>{
 
  try{
 
@@ -253,7 +226,7 @@ router.delete('/utilisateurs/:id', verifyToken, requireAdmin, async (req,res)=>{
 
 // Route Validation Admin
 
-router.put("/utilisateurs/:id/valider",verifyToken,requireAdmin,async(req,res)=>{
+router.put("/utilisateurs/:id/valider",auth,requireAdmin,async(req,res)=>{
 
 try{
 

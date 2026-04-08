@@ -92,6 +92,57 @@ router.get('/', auth, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur', details: err.message });
   }
 });
+// ─────────────────────────────────────────────
+// GET /api/projet/mes-projets
+// يرجّع فقط المشاريع متاع المستخدم الحالي
+// ─────────────────────────────────────────────
+router.get('/mes-projets', auth, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        p.id, p.titre, p.description, p.domaine, p.mots_cles,
+        p.annee_publication, p.date_debut, p.date_fin, p.statut, p.createur_id,
+        c.nom AS createur_nom,
+
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', u.id,
+              'nom', u.nom,
+              'email', u.email,
+              'role', u.role,
+              'date_participation', pa.date_participation
+            )
+          ) FILTER (WHERE u.id IS NOT NULL),
+          '[]'::json
+        ) AS participants,
+
+        COUNT(DISTINCT d.id) AS nombre_documents
+
+      FROM projet p
+      LEFT JOIN utilisateur c ON c.id = p.createur_id
+      LEFT JOIN participation pa ON pa.projet_id = p.id
+      LEFT JOIN utilisateur u ON u.id = pa.utilisateur_id
+      LEFT JOIN document d ON d.projet_id = p.id
+
+      WHERE 
+        p.createur_id = $1
+        OR p.id IN (
+          SELECT projet_id FROM participation WHERE utilisateur_id = $1
+        )
+
+      GROUP BY p.id, c.nom
+      ORDER BY p.date_debut DESC
+    `, [userId]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/projet/:id — détail + participants + documents
