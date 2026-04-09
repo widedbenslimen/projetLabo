@@ -346,12 +346,12 @@ export default function Rapport({ userRole = "CHERCHEUR" }) {
           fillColor: [248, 248, 250],
         },
         columnStyles: {
-          0: { cellWidth: 50 }, // Titre
-          1: { cellWidth: 25 }, // Type
-          2: { cellWidth: 35 }, // Auteur
-          3: { cellWidth: 40 }, // Journal
-          4: { cellWidth: 35 }, // DOI
-          5: { cellWidth: 25 }, // Date
+          0: { cellWidth: 35 }, // Titre
+          1: { cellWidth: 20 }, // Type
+          2: { cellWidth: 20 }, // Auteur
+          3: { cellWidth: 35 }, // Journal
+          4: { cellWidth: 30 }, // DOI
+          5: { cellWidth: 20 }, // Date
           6: { cellWidth: 20 }, // Visibilité
         },
         margin: { left: 20, right: 20 },
@@ -492,7 +492,7 @@ export default function Rapport({ userRole = "CHERCHEUR" }) {
               </button>
               {(rapport || error) && (
                 <button className="btn-reset" onClick={reinitialiser} title="Revenir à l'état initial">
-                  ✕ Annuler
+                   Annuler
                 </button>
               )}
             </div>
