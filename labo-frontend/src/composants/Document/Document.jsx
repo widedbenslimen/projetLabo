@@ -819,7 +819,11 @@ export default function Document() {
             </div>
             {globalResults.length === 0 ? (
               <div className="doc-empty">
-                <div className="doc-empty-icon">🔍</div>
+                <div>
+                  <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                </div>
                 <p className="doc-empty-title">Aucun résultat</p>
               </div>
             ) : (

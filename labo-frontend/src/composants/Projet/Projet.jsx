@@ -7,6 +7,7 @@ import "./Projet.css";
 const API_BASE = "http://localhost:8000/api";
 const getToken = () => localStorage.getItem("token");
 
+// ✅ FIX: Meilleure gestion des erreurs HTTP (401, 403, 404, 409…)
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -15,7 +16,21 @@ async function apiFetch(path, options = {}) {
       ...(options.headers || {}),
     },
   });
-  if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+
+  if (!res.ok) {
+    let errMsg = res.statusText;
+    try {
+      const body = await res.json();
+      errMsg = body.error || body.message || errMsg;
+    } catch { /* ignore parse error */ }
+
+    if (res.status === 401) throw new Error("Session expirée. Veuillez vous reconnecter.");
+    if (res.status === 403) throw new Error("Accès refusé : " + errMsg);
+    if (res.status === 404) throw new Error("Ressource introuvable.");
+    if (res.status === 409) throw new Error(errMsg || "Conflit de données.");
+    throw new Error(errMsg);
+  }
+
   return res.json();
 }
 
@@ -23,12 +38,8 @@ async function apiFetch(path, options = {}) {
    STATUT CONFIG
 ───────────────────────────────────────────── */
 const STATUT_CONFIG = {
-  en_cours:    { label: "En cours",    color: "#6366f1", bg: "rgba(99,102,241,.10)",  border: "rgba(99,102,241,.28)" },
-  soumis:      { label: "Soumis",      color: "#f59e0b", bg: "rgba(245,158,11,.10)",  border: "rgba(245,158,11,.28)" },
-  en_revision: { label: "En révision", color: "#f97316", bg: "rgba(249,115,22,.10)",  border: "rgba(249,115,22,.28)" },
-  accepte:     { label: "Accepté",     color: "#4a7c59", bg: "rgba(74,124,89,.10)",   border: "rgba(74,124,89,.28)" },
-  publie:      { label: "Publié",      color: "#0d9488", bg: "rgba(13,148,136,.10)",  border: "rgba(13,148,136,.28)" },
-  retire:      { label: "Retiré",      color: "#c0392b", bg: "rgba(192,57,43,.10)",   border: "rgba(192,57,43,.28)" },
+  en_cours: { label: "En cours",  color: "#6366f1", bg: "rgba(99,102,241,.10)",  border: "rgba(99,102,241,.28)" },
+  termine:  { label: "Terminé",   color: "#0d9488", bg: "rgba(13,148,136,.10)",  border: "rgba(13,148,136,.28)" },
 };
 
 const TYPE_ICONS = {
@@ -42,10 +53,7 @@ const TYPE_ICONS = {
 function StatutBadge({ statut }) {
   const s = STATUT_CONFIG[statut] || { label: statut, color: "#888", bg: "rgba(128,128,128,.10)", border: "rgba(128,128,128,.25)" };
   return (
-    <span
-      className="pj-statut-badge"
-      style={{ color: s.color, background: s.bg, borderColor: s.border }}
-    >
+    <span className="pj-statut-badge" style={{ color: s.color, background: s.bg, borderColor: s.border }}>
       <span className="pj-statut-dot" style={{ background: s.color }} />
       {s.label}
     </span>
@@ -53,16 +61,23 @@ function StatutBadge({ statut }) {
 }
 
 /* ─────────────────────────────────────────────
-   MODAL (formulaire / confirmation)
+   MODAL
 ───────────────────────────────────────────── */
 function PjModal({ title, onClose, children, wide }) {
+  // ✅ FIX: Fermeture avec touche Escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
     <div className="pj-overlay" onClick={onClose}>
       <div className={`pj-modal ${wide ? "pj-modal-wide" : ""}`} onClick={e => e.stopPropagation()}>
         {title && (
           <div className="pj-modal-head">
             <span className="pj-modal-title">{title}</span>
-            <button className="pj-modal-x" onClick={onClose}>✕</button>
+            <button className="pj-modal-x" onClick={onClose} aria-label="Fermer">✕</button>
           </div>
         )}
         <div className="pj-modal-body">{children}</div>
@@ -89,19 +104,25 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // ✅ FIX: Validation date côté frontend (miroir du backend)
+  const dateError = form.date_debut && form.date_fin && form.date_fin < form.date_debut
+    ? "La date de fin doit être postérieure à la date de début."
+    : "";
+
   const addParticipant = async () => {
     setParticipantError("");
     const val = participantEmail.trim();
     if (!val) return;
     setParticipantSearching(true);
     try {
+      // ✅ ALIGNÉ avec GET /api/utilisateur?email=xxx
       const users = await apiFetch(`/utilisateur?email=${encodeURIComponent(val)}`);
       const user  = Array.isArray(users) ? users[0] : users;
       if (!user?.id) { setParticipantError("Aucun utilisateur trouvé."); return; }
       if (participants.some(p => p.id === user.id)) { setParticipantError("Participant déjà ajouté."); return; }
       setParticipants(prev => [...prev, { id: user.id, nom: user.nom, email: user.email }]);
       setParticipantEmail("");
-    } catch { setParticipantError("Utilisateur introuvable ou erreur serveur."); }
+    } catch (e) { setParticipantError(e.message || "Utilisateur introuvable ou erreur serveur."); }
     finally { setParticipantSearching(false); }
   };
 
@@ -109,17 +130,16 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 
   const handleSubmit = e => {
     e.preventDefault();
+    if (dateError) return;
     const body = Object.fromEntries(
-      Object.entries(form).filter(([, v]) => v !== null && v !== undefined && v !== "")
+      Object.entries(form).filter(([, v]) => v !== undefined )
     );
     const creatorId = initial?.createur_id;
     const toSync    = creatorId ? participants.filter(p => p.id !== creatorId) : participants;
     onSubmit(body, toSync);
   };
-
   return (
     <form className="pj-form" onSubmit={handleSubmit}>
-      {/* ── Section 1 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Informations générales</div>
         <div className="pj-field pj-full">
@@ -140,7 +160,6 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
         </div>
       </div>
 
-      {/* ── Section 2 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Métadonnées</div>
         <div className="pj-field">
@@ -164,9 +183,13 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
           <label>Date de fin</label>
           <input type="date" value={form.date_fin} onChange={e => set("date_fin", e.target.value)} />
         </div>
+        {dateError && (
+          <div className="pj-field pj-full">
+            <span className="pj-form-error">⚠ {dateError}</span>
+          </div>
+        )}
       </div>
 
-      {/* ── Section 3 ── */}
       <div className="pj-form-section">
         <div className="pj-form-section-title">Participants</div>
         <div className="pj-field pj-full">
@@ -182,7 +205,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
             />
             <button type="button" className="pj-btn-add-participant"
               onClick={addParticipant} disabled={participantSearching}>
-              {participantSearching ? "Recherche…" : "+ Ajouter"}
+              {participantSearching ? "…" : "+ Ajouter"}
             </button>
           </div>
           {participantError && <span className="pj-participant-error">{participantError}</span>}
@@ -200,8 +223,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
                   {p.id === initial?.createur_id ? (
                     <span className="pj-chip-creator">Créateur</span>
                   ) : (
-                    <button type="button" className="pj-chip-remove"
-                      onClick={() => removeParticipant(p.id)}>✕</button>
+                    <button type="button" className="pj-chip-remove" onClick={() => removeParticipant(p.id)}>✕</button>
                   )}
                 </div>
               ))}
@@ -212,20 +234,8 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 
       <div className="pj-form-actions">
         <button type="button" className="pj-btn-ghost" onClick={onCancel}>Annuler</button>
-        <button type="submit" className="pj-btn-primary" disabled={loading}>
-          {loading ? (
-            <><span className="pj-btn-spinner" /> Enregistrement…</>
-          ) : initial ? (
-            <>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-              Enregistrer
-            </>
-          ) : (
-            <>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              Créer le projet
-            </>
-          )}
+        <button type="submit" className="pj-btn-primary" disabled={loading || !!dateError}>
+          {loading ? <><span className="pj-btn-spinner" /> Enregistrement…</> : initial ? "✎ Enregistrer" : "+ Créer le projet"}
         </button>
       </div>
     </form>
@@ -233,7 +243,7 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 }
 
 /* ─────────────────────────────────────────────
-   DOCUMENT ROW (dans le détail)
+   DOCUMENT ROW
 ───────────────────────────────────────────── */
 function ProjetDocRow({ doc }) {
   const fileUrl = doc.lien ? `http://localhost:8000/${doc.lien.replace(/\\/g, "/")}` : null;
@@ -257,11 +267,7 @@ function ProjetDocRow({ doc }) {
       <div className="pj-doc-actions">
         {fileUrl ? (
           <>
-            <a href={fileUrl} target="_blank" rel="noreferrer"
-              className="pj-doc-btn pj-doc-btn-open">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              Ouvrir
-            </a>
+            <a href={fileUrl} target="_blank" rel="noreferrer" className="pj-doc-btn pj-doc-btn-open">👁 Ouvrir</a>
             {(isImg || isPdf || isVid) && (
               <button className="pj-doc-btn pj-doc-btn-preview" onClick={() => setPreview(v => !v)}>
                 {preview ? "▲ Fermer" : "▼ Aperçu"}
@@ -284,43 +290,37 @@ function ProjetDocRow({ doc }) {
 }
 
 /* ─────────────────────────────────────────────
-   PANNEAU DÉTAIL (slide-in latéral)
+   PANNEAU DÉTAIL
 ───────────────────────────────────────────── */
 function DetailPanel({ projet, onClose, onEdit, onDelete }) {
   const s = STATUT_CONFIG[projet.statut] || STATUT_CONFIG.en_cours;
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   return (
     <>
       <div className="pj-panel-backdrop" onClick={onClose} />
       <div className="pj-detail-panel">
-
-        {/* Header */}
-        <div className="pj-panel-header" style={{ "--pc": s.color }}>
-          <div className="pj-panel-header-left">
-            <span className="pj-panel-header-title">Détail du projet</span>
-          </div>
-          <button className="pj-panel-close" onClick={onClose}>✕</button>
+        <div className="pj-panel-header">
+          <span className="pj-panel-header-title">Détail du projet</span>
+          <button className="pj-panel-close" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
 
-        {/* Corps */}
         <div className="pj-panel-body">
-
-          {/* Hero */}
           <div className="pj-panel-hero" style={{ borderLeftColor: s.color, background: `${s.color}0d` }}>
             <h2 className="pj-panel-titre">{projet.titre}</h2>
             <div className="pj-panel-chips">
               <StatutBadge statut={projet.statut} />
-              {projet.domaine && (
-                <span className="pj-panel-domaine">{projet.domaine}</span>
-              )}
+              {projet.domaine && <span className="pj-panel-domaine">{projet.domaine}</span>}
             </div>
           </div>
 
-          {/* Métadonnées */}
           <dl className="pj-panel-meta">
-            {projet.createur_nom && (
-              <><dt>Créateur</dt><dd>{projet.createur_nom}</dd></>
-            )}
+            {projet.createur_nom && (<><dt>Créateur</dt><dd>{projet.createur_nom}</dd></>)}
             {projet.participants?.length > 0 && (
               <><dt>Participants</dt>
               <dd>
@@ -334,15 +334,9 @@ function DetailPanel({ projet, onClose, onEdit, onDelete }) {
                 </div>
               </dd></>
             )}
-            {projet.annee_publication && (
-              <><dt>Année</dt><dd>{projet.annee_publication}</dd></>
-            )}
-            {projet.date_debut && (
-              <><dt>Date début</dt><dd>{new Date(projet.date_debut).toLocaleDateString("fr-FR")}</dd></>
-            )}
-            {projet.date_fin && (
-              <><dt>Date fin</dt><dd>{new Date(projet.date_fin).toLocaleDateString("fr-FR")}</dd></>
-            )}
+            {projet.annee_publication && (<><dt>Année</dt><dd>{projet.annee_publication}</dd></>)}
+            {projet.date_debut && (<><dt>Début</dt><dd>{new Date(projet.date_debut).toLocaleDateString("fr-FR")}</dd></>)}
+            {projet.date_fin && (<><dt>Fin</dt><dd>{new Date(projet.date_fin).toLocaleDateString("fr-FR")}</dd></>)}
             {projet.mots_cles && (
               <><dt>Mots-clés</dt>
               <dd>
@@ -355,7 +349,6 @@ function DetailPanel({ projet, onClose, onEdit, onDelete }) {
             )}
           </dl>
 
-          {/* Description */}
           {projet.description && (
             <div className="pj-panel-desc">
               <span className="pj-panel-section-label">Description</span>
@@ -363,37 +356,27 @@ function DetailPanel({ projet, onClose, onEdit, onDelete }) {
             </div>
           )}
 
-          {/* Documents */}
           <div className="pj-panel-docs">
             <span className="pj-panel-section-label">
               Documents
               <span className="pj-panel-docs-count">{projet.documents?.length || 0}</span>
             </span>
-            {!projet.documents || projet.documents.length === 0 ? (
+            {!projet.documents?.length ? (
               <div className="pj-no-docs">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span style={{ fontSize: 28 }}>📁</span>
                 <span>Aucun document associé</span>
               </div>
             ) : (
               <div className="pj-docs-list">
-                {projet.documents.map(doc => (
-                  <ProjetDocRow key={doc.id} doc={doc} />
-                ))}
+                {projet.documents.map(doc => <ProjetDocRow key={doc.id} doc={doc} />)}
               </div>
             )}
           </div>
         </div>
 
-        {/* Footer actions */}
         <div className="pj-panel-footer">
-          <button className="pj-btn-ghost" onClick={() => onEdit(projet)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            Modifier
-          </button>
-          <button className="pj-btn-danger" onClick={() => onDelete(projet.id)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            Supprimer
-          </button>
+          <button className="pj-btn-ghost" onClick={() => onEdit(projet)}>✎ Modifier</button>
+          <button className="pj-btn-danger" onClick={() => onDelete(projet.id)}>🗑 Supprimer</button>
         </div>
       </div>
     </>
@@ -401,14 +384,14 @@ function DetailPanel({ projet, onClose, onEdit, onDelete }) {
 }
 
 /* ─────────────────────────────────────────────
-   SIDEBAR SCHOLAR
+   SIDEBAR
 ───────────────────────────────────────────── */
 function ScholarSidebar({ projets }) {
   const [showAll, setShowAll] = useState(false);
   const safe = projets || [];
 
-  const publie  = safe.filter(p => p.statut === "publie").length;
-  const enCours = safe.filter(p => p.statut === "en_cours").length;
+  const termine  = safe.filter(p => p.statut === "termine").length;
+  const enCours  = safe.filter(p => p.statut === "en_cours").length;
 
   const coMap = {};
   safe.forEach(p => {
@@ -418,23 +401,19 @@ function ScholarSidebar({ projets }) {
     });
   });
   const coauteurs = Object.values(coMap).sort((a, b) => b.count - a.count);
-  const visible   = showAll ? coauteurs : coauteurs.slice(0, 6);
-
-  const statRows = [
-    { label: "Total",    value: safe.length },
-    { label: "Publiés",  value: publie },
-    { label: "En cours", value: enCours },
-    { label: "Participants", value: coauteurs.length },
-  ];
+  const visible   = showAll ? coauteurs : coauteurs.slice(0, 9);
 
   return (
     <aside className="pj-sidebar">
-
-      {/* Stats */}
       <div className="pj-sidebar-card">
         <div className="pj-sidebar-card-title">Statistiques</div>
         <div className="pj-stat-list">
-          {statRows.map(r => (
+          {[
+            { label: "Total projets", value: safe.length },
+            { label: "En cours",      value: enCours },
+            { label: "Terminés",      value: termine },
+            { label: "Participants",  value: coauteurs.length },
+          ].map(r => (
             <div key={r.label} className="pj-stat-row">
               <span className="pj-stat-label">{r.label}</span>
               <span className="pj-stat-value">{r.value}</span>
@@ -443,14 +422,13 @@ function ScholarSidebar({ projets }) {
         </div>
       </div>
 
-      {/* Participants */}
       {coauteurs.length > 0 && (
         <div className="pj-sidebar-card">
           <div className="pj-sidebar-card-title">
             Participants
             {coauteurs.length > 6 && (
               <button className="pj-sidebar-toggle" onClick={() => setShowAll(s => !s)}>
-                {showAll ? "Réduire" : `Tout afficher (${coauteurs.length})`}
+                {showAll ? "Réduire" : `Tout (${coauteurs.length})`}
               </button>
             )}
           </div>
@@ -481,6 +459,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
   const [error,        setError]        = useState(null);
   const [search,       setSearch]       = useState("");
   const [filterStatut, setFilterStatut] = useState("");
+  const [yearFilter, setYearFilter] = useState("ALL");
   const [currentPage,  setCurrentPage]  = useState(1);
   const perPage = 10;
 
@@ -490,28 +469,24 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
   const [confirm,     setConfirm]     = useState(null);
   const [toast,       setToast]       = useState(null);
 
-  /* ── Toast ── */
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3200);
   };
 
-  /* ── Chargement ── */
+  // ✅ FIX MAJEUR: Utiliser /mes-projets côté serveur au lieu de filtrer côté client
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const data = await apiFetch("/projet");
-      const list = showOnlyUserProjets && user
-        ? data.filter(p => p.participants?.some(x => x.id === user.id || x.id === String(user.id)))
-        : data;
-      setProjets(list);
+      const endpoint = showOnlyUserProjets && user ? "/projet/mes-projets" : "/projet";
+      const data = await apiFetch(endpoint);
+      setProjets(data);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, [showOnlyUserProjets, user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Filtrage ── */
   const filtered = projets.filter(p => {
     const q = search.toLowerCase();
     const matchQ = !q
@@ -521,13 +496,16 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
       || p.domaine?.toLowerCase().includes(q)
       || p.createur_nom?.toLowerCase().includes(q)
       || p.participants?.some(x => x.nom?.toLowerCase().includes(q));
-    return matchQ && (!filterStatut || p.statut === filterStatut);
+    const matchYear = yearFilter === "ALL" || String(p.annee_publication) === String(yearFilter);
+
+    return matchQ && (!filterStatut || p.statut === filterStatut) && matchYear;
   });
+  
+const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))].sort((a,b)=>b-a);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-  /* ── CRUD ── */
   const handleCreate = async (body, participants) => {
     setFormLoading(true);
     try {
@@ -543,7 +521,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ utilisateur_id: Number(p.id) }),
           });
-        } catch { /* ignore */ }
+        } catch (e) { console.warn(`Participant ${p.nom} ignoré :`, e.message); }
       }
       showToast("Projet créé avec succès ✓");
       setEditing(null);
@@ -560,6 +538,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const current    = editing.participants || [];
       const creatorId  = String(editing.createur_id);
       const currentIds = current.map(p => String(p.id));
@@ -573,16 +552,17 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ utilisateur_id: Number(p.id) }),
             });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn(`Participant ${p.nom} ignoré :`, e.message); }
         }
       }
       for (const p of current) {
         if (String(p.id) !== creatorId && !newIds.includes(String(p.id))) {
           try {
             await apiFetch(`/projet/${editing.id}/participants/${p.id}`, { method: "DELETE" });
-          } catch { /* ignore */ }
+          } catch (e) { console.warn(`Retrait ${p.id} ignoré :`, e.message); }
         }
       }
+
       showToast("Projet modifié ✓");
       setEditing(null); setSelected(null);
       loadData();
@@ -604,15 +584,11 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
     catch { setSelected(p); }
   };
 
-  const resetFilters = () => { setSearch(""); setFilterStatut(""); setCurrentPage(1); };
+  const resetFilters = () => { setSearch(""); setFilterStatut(""); setYearFilter("ALL"); setCurrentPage(1); };
 
-  /* ─────────────────────────────────────────────
-     RENDER
-  ───────────────────────────────────────────── */
   return (
     <div className="pj-root">
 
-      {/* Toast */}
       {toast && (
         <div className={`pj-toast pj-toast-${toast.type}`}>
           {toast.type === "success" ? "✓" : "⚠"} {toast.msg}
@@ -622,23 +598,24 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
       {/* ── Topbar ── */}
       <div className="pj-topbar">
         <div className="pj-topbar-left">
-          <h1 className="pj-page-title">Projets</h1>
+          <h1 className="pj-page-title">Projets de recherche</h1>
           {!loading && (
             <span className="pj-count-pill">{projets.length} projet{projets.length !== 1 ? "s" : ""}</span>
           )}
         </div>
         <button className="pj-btn-primary" onClick={() => setEditing(true)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Nouveau projet
+          + Nouveau projet
         </button>
       </div>
 
       {/* ── Toolbar ── */}
       <div className="pj-toolbar">
         <div className="pj-search-wrap">
-          <svg className="pj-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-          </svg>
+          <span className="pj-search-icon-txt">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </span>
           <input
             className="pj-search-input"
             placeholder="Rechercher titre, domaine, participants…"
@@ -658,144 +635,123 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
+        <select
+          className="pj-filter-select"
+          value={yearFilter}
+          onChange={e => { setYearFilter(e.target.value); setCurrentPage(1); }}
+        >
+          <option value="ALL">Toutes les années</option>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
 
         <button className="pj-btn-refresh" onClick={loadData} disabled={loading} title="Actualiser">
-          <svg
-            width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-            className={loading ? "pj-spin" : ""}
-          >
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-          </svg>
+          <span className={loading ? "pj-spin" : ""}>↻</span>
         </button>
       </div>
 
-      {/* ── Body ── */}
+      {/* ── Body Layout ── */}
       <div className="pj-body-layout">
 
-        {/* Colonne principale */}
         <div className="pj-main-col">
-          {loading ? (
-            <div className="pj-state-center">
-              <div className="pj-spinner" />
-              <span>Chargement des projets…</span>
-            </div>
-          ) : error ? (
-            <div className="pj-state-center pj-state-err">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span>{error}</span>
-              <button className="pj-btn-ghost pj-btn-sm" onClick={loadData}>Réessayer</button>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="pj-state-center">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              <span>Aucun projet trouvé</span>
-              {(search || filterStatut) && (
-                <button className="pj-btn-ghost pj-btn-sm" onClick={resetFilters}>Effacer les filtres</button>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* En-tête tableau */}
-              <div className="pj-list-header">
-                <span className="pj-col-title">Titre</span>
-                <span className="pj-col-center">Participants</span>
-                <span className="pj-col-center">Année</span>
-                <span className="pj-col-center">Statut</span>
-                <span className="pj-col-center">Actions</span>
+          {/* ✅ NEW: Wrapper centré avec marges latérales */}
+          <div className="pj-table-wrapper">
+
+            {loading ? (
+              <div className="pj-state-center">
+                <div className="pj-spinner" />
+                <span>Chargement des projets…</span>
               </div>
-
-              {/* Lignes */}
-              <div className="pj-list">
-                {paginated.map(p => (
-                  <div key={p.id} className="pj-list-row" onClick={() => openDetail(p)}>
-                    <div className="pj-list-main">
-                      <span className="pj-list-title">{p.titre}</span>
-                      {p.participants?.length > 0 && (
-                        <div className="pj-list-authors">
-                          {p.participants.map(x => x.nom).join(", ")}
-                        </div>
-                      )}
-                      {p.domaine && (
-                        <div className="pj-list-domaine">{p.domaine}</div>
-                      )}
-                      {p.mots_cles && (
-                        <div className="pj-list-keywords">
-                          {p.mots_cles.split(",").slice(0, 4).map((k, i) => (
-                            <span key={i} className="pj-kw">{k.trim()}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pj-col-center">
-                      <span className="pj-participants-count">{p.participants?.length || 0}</span>
-                    </div>
-
-                    <div className="pj-col-center pj-year">
-                      {p.annee_publication || "—"}
-                    </div>
-
-                    <div className="pj-col-center">
-                      <StatutBadge statut={p.statut} />
-                    </div>
-
-                    <div className="pj-col-center pj-actions-col" onClick={e => e.stopPropagation()}>
-                      <button
-                        className="pj-act-btn"
-                        title="Modifier"
-                        onClick={() => { setEditing(p); setSelected(null); }}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-                      </button>
-                      <button
-                        className="pj-act-btn pj-act-del"
-                        title="Supprimer"
-                        onClick={() => setConfirm(p.id)}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            ) : error ? (
+              <div className="pj-state-center pj-state-err">
+                <span>⚠ {error}</span>
+                <button className="pj-btn-ghost pj-btn-sm" onClick={loadData}>Réessayer</button>
               </div>
-
-              {/* Footer */}
-              <div className="pj-list-footer">{filtered.length} projet{filtered.length !== 1 ? "s" : ""}</div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="pj-pagination">
-                  <span className="pj-page-info">Page {currentPage} / {totalPages}</span>
-                  <div className="pj-page-btns">
-                    <button className="pj-page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>←</button>
-                    {[...Array(totalPages)].map((_, i) => {
-                      const n = i + 1;
-                      if (n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
-                        return (
-                          <button
-                            key={n}
-                            className={`pj-page-btn ${currentPage === n ? "pj-page-active" : ""}`}
-                            onClick={() => setCurrentPage(n)}
-                          >{n}</button>
-                        );
-                      if (Math.abs(n - currentPage) === 2) return <span key={n} className="pj-page-dots">…</span>;
-                      return null;
-                    })}
-                    <button className="pj-page-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>→</button>
-                  </div>
+            ) : filtered.length === 0 ? (
+              <div className="pj-state-center">
+                <span className="pj-empty-icon">📂</span>
+                <span>Aucun projet trouvé</span>
+                {(search || filterStatut || yearFilter !== "ALL") && (
+                  <button className="pj-btn-ghost pj-btn-sm" onClick={resetFilters}>Effacer les filtres</button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="pj-list-header">
+                  <span className="pj-col-title">Titre / Domaine</span>
+                  
+                  <span className="pj-col-center">Année</span>
+                  <span className="pj-col-center">Statut</span>
+                  <span className="pj-col-center">Actions</span>
                 </div>
-              )}
-            </>
-          )}
+
+                <div className="pj-list">
+                  {paginated.map(p => (
+                    <div key={p.id} className="pj-list-row" onClick={() => openDetail(p)}>
+                      <div className="pj-list-main">
+                        <span className="pj-list-title">{p.titre}</span>
+                        
+                        {p.domaine && <div className="pj-list-domaine">{p.domaine}</div>}
+                        {p.mots_cles && (
+                          <div className="pj-list-keywords">
+                            {p.mots_cles.split(",").slice(0, 4).map((k, i) => (
+                              <span key={i} className="pj-kw">{k.trim()}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      
+
+                      <div className="pj-col-center pj-year">
+                        {p.annee_publication || "—"}
+                      </div>
+
+                      <div className="pj-col-center">
+                        <StatutBadge statut={p.statut} />
+                      </div>
+
+                      <div className="pj-col-center pj-actions-col" onClick={e => e.stopPropagation()}>
+                        <button className="pj-act-btn" title="Modifier"
+                          onClick={() => { setEditing(p); setSelected(null); }}>✎</button>
+                        <button className="pj-act-btn pj-act-del" title="Supprimer"
+                          onClick={() => setConfirm(p.id)}>🗑</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pj-list-footer">
+                  {filtered.length} résultat{filtered.length !== 1 ? "s" : ""}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="pj-pagination">
+                    <span className="pj-page-info">Page {currentPage} / {totalPages}</span>
+                    <div className="pj-page-btns">
+                      <button className="pj-page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>←</button>
+                      {[...Array(totalPages)].map((_, i) => {
+                        const n = i + 1;
+                        if (n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
+                          return (
+                            <button key={n}
+                              className={`pj-page-btn ${currentPage === n ? "pj-page-active" : ""}`}
+                              onClick={() => setCurrentPage(n)}>{n}</button>
+                          );
+                        if (Math.abs(n - currentPage) === 2) return <span key={n} className="pj-page-dots">…</span>;
+                        return null;
+                      })}
+                      <button className="pj-page-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>→</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Sidebar */}
         <ScholarSidebar projets={projets} />
       </div>
 
-      {/* ── Panneau détail (slide-in) ── */}
       {selected && !editing && (
         <DetailPanel
           projet={selected}
@@ -805,21 +761,18 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
         />
       )}
 
-      {/* ── Modal création ── */}
       {editing === true && (
         <PjModal title="Nouveau projet" onClose={() => setEditing(null)} wide>
           <ProjetForm onSubmit={handleCreate} onCancel={() => setEditing(null)} loading={formLoading} />
         </PjModal>
       )}
 
-      {/* ── Modal édition ── */}
       {editing && editing !== true && (
         <PjModal title={`Modifier — ${editing.titre}`} onClose={() => setEditing(null)} wide>
           <ProjetForm initial={editing} onSubmit={handleUpdate} onCancel={() => setEditing(null)} loading={formLoading} />
         </PjModal>
       )}
 
-      {/* ── Modal confirmation suppression ── */}
       {confirm && (
         <PjModal title="Confirmer la suppression" onClose={() => setConfirm(null)}>
           <div className="pj-confirm">
