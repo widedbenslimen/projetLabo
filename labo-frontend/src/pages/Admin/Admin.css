@@ -215,18 +215,18 @@
 .ad-btn-logout {
   width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 0.5px solid var(--ad-border2);
+  background: #c84335;
+  border: 0.5px solid #fff;
   border-radius: var(--ad-r-sm);
-  color: var(--ad-faint);
+  color: #fff;
   cursor: pointer;
-  transition: background var(--ad-t), color var(--ad-t), border-color var(--ad-t);
+  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 .ad-btn-logout:hover {
-  background: rgba(192,57,43,.08);
-  border-color: rgba(192,57,43,.25);
-  color: var(--ad-red);
+  background: #c0392b;         /* 🔴 background أحمر */
+  color: #fff;                 /* ⚪ text أبيض */
+  border-color: #c0392b;
 }
 
 /* ══════════════════════════════════════════

@@ -277,17 +277,17 @@
 .ch-btn-logout {
   width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 0.5px solid var(--ch-border2);
+  background: #c84335;
+  border: 0.5px solid #fff;
   border-radius: var(--ch-r-sm);
-  color: var(--ch-faint);
+  color: #fff;
   cursor: pointer;
-  transition: background var(--ch-t), color var(--ch-t), border-color var(--ch-t);
+  transition: all 0.3s ease;
 }
 .ch-btn-logout:hover {
-  background: rgba(192,57,43,.08);
-  border-color: rgba(192,57,43,.25);
-  color: #c0392b;
+ background: #c0392b;         /* 🔴 background أحمر */
+  color: #fff;                 /* ⚪ text أبيض */
+  border-color: #c0392b;
 }
 
 /* Spin animation */

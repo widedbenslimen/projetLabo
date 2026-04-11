@@ -385,7 +385,7 @@ export default function CadreTechnique() {
                 />
                 <StatCard
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg>}
-                  label="Publiés"
+                  label="Publications"
                   value={stats.visibilites}
                   sub="Articles publiés"
                   accent="#4a7c59"

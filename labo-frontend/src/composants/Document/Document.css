@@ -218,9 +218,7 @@
 .doc-section:first-child {
   display: flex;
   flex-direction: column;
-  
   align-items: center;
-  
   padding: 20px 0;
 }
 /* Mode compact : centrage vertical */
@@ -249,20 +247,20 @@
 
 /* Augmenter aussi la taille du contenu des cartes */
 .doc-type-grid.compact .doc-type-card {
-  padding: 24px 20px 18px; /* Plus de padding interne */
+  padding: 24px 20px 18px;
   gap: 10px;
 }
 
 .doc-type-grid.compact .doc-type-card-icon { 
-  font-size: 36px; /* Icône plus grande */
+  font-size: 36px;
 }
 
 .doc-type-grid.compact .doc-type-card-label { 
-  font-size: 15px; /* Texte plus grand */
+  font-size: 15px;
 }
 
 .doc-type-grid.compact .doc-type-card-count { 
-  font-size: 32px; /* Chiffre plus grand */
+  font-size: 32px;
 }
 
 /* Mode étendu — 6 colonnes pleine largeur */
@@ -270,7 +268,7 @@
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   padding: 0;
-  margin-top: 0; /* S'assure d'être en haut */
+  margin-top: 0;
 }
 
 /* ── Carte de type ── */
@@ -773,10 +771,10 @@
 .doc-empty {
   display: flex;
   flex-direction: column;
-  justify-content: center; /* centre verticalement */
-  align-items: center;     /* centre horizontalement */
+  justify-content: center;
+  align-items: center;
   text-align: center;
-  gap: 12px;               /* espace entre les éléments */
+  gap: 12px;
   padding: 52px 20px;
   background: var(--doc-bg2);
   border: 0.5px solid var(--doc-border);
@@ -1146,6 +1144,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-bottom: 18px;
+  margin-top: 4px;
 }
 .doc-field          { display: flex; flex-direction: column; gap: 5px; }
 .doc-field-span     { grid-column: 1 / -1; }
@@ -1286,6 +1285,57 @@
   color: var(--doc-text);
 }
 .doc-visibility-toggle.on .doc-vis-state { color: #6366f1; }
+
+/* ══════════════════════════════════════════
+   BANDEAU TYPE VERROUILLÉ
+══════════════════════════════════════════ */
+.doc-form-type-locked {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--tc) 8%, var(--doc-bg2));
+  border: 0.5px solid color-mix(in srgb, var(--tc) 20%, transparent);
+  border-radius: var(--doc-r-sm);
+  margin-bottom: 20px;
+}
+
+.doc-form-type-locked-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.doc-form-type-locked-info {
+  flex: 1;
+}
+
+.doc-form-type-locked-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--doc-muted);
+}
+
+.doc-form-type-locked-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tc);
+}
+
+.doc-form-type-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--tc) 12%, transparent);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tc);
+  white-space: nowrap;
+}
 
 /* ══════════════════════════════════════════
    CONFIRMATION

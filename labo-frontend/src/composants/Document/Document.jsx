@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import "./Document.css";
+import IA from "../../composants/IA/IA";
 
 /* ═══════════════════════════════════════════════════════════
    CONSTANTS
@@ -20,25 +21,19 @@ const TYPE_META = {
 ═══════════════════════════════════════════════════════════ */
 const getToken = () => localStorage.getItem("token");
 
-/** Décode le payload JWT pour récupérer id + role */
 function getUserFromToken() {
   try {
     const token = getToken();
     if (!token) return null;
     const payload = JSON.parse(atob(token.split(".")[1]));
     return { id: payload.id, role: payload.role };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      ...(options.headers || {}),
-    },
+    headers: { Authorization: `Bearer ${getToken()}`, ...(options.headers || {}) },
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }));
@@ -47,14 +42,6 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-/**
- * Retourne les capacités d'un rôle :
- *   canCreate  → peut créer des documents
- *   canEdit    → peut modifier/supprimer ses propres docs (admin : tous)
- *   canToggleVis → peut changer la visibilité
- *   isAdmin    → accès total
- *   filterOwn  → ne voir que ses propres documents dans les cartes/tableau
- */
 function getRoleCapabilities(role) {
   switch (role) {
     case "ADMIN":
@@ -62,31 +49,21 @@ function getRoleCapabilities(role) {
     case "CHERCHEUR":
     case "CADRE_TECHNIQUE":
       return { canCreate: true, canEdit: true, canToggleVis: true, isAdmin: false, filterOwn: true };
-    case "INVITE":
     default:
       return { canCreate: false, canEdit: false, canToggleVis: false, isAdmin: false, filterOwn: false };
   }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   SOUS-COMPOSANTS PURS (sans logique de rôle)
+   SOUS-COMPOSANTS
 ═══════════════════════════════════════════════════════════ */
-
 function TypeBadge({ type }) {
   const m = TYPE_META[type] || { icon: "📄", color: "#888" };
-  return (
-    <span className="doc-type-badge" style={{ "--bc": m.color }}>
-      {m.icon} {m.label || type}
-    </span>
-  );
+  return <span className="doc-type-badge" style={{ "--bc": m.color }}>{m.icon} {m.label || type}</span>;
 }
 
 function VisibilityChip({ visibilite }) {
-  return (
-    <span className={`doc-vis-chip ${visibilite ? "public" : "private"}`}>
-      {visibilite ? "🌐 Public" : "🔒 Privé"}
-    </span>
-  );
+  return <span className={`doc-vis-chip ${visibilite ? "public" : "private"}`}>{visibilite ? "🌐 Public" : "🔒 Privé"}</span>;
 }
 
 function DocModal({ title, onClose, children }) {
@@ -108,29 +85,19 @@ function EmptyState({ type, onAdd, hasFilters, onClear, canCreate }) {
   return (
     <div className="doc-empty">
       <div className="doc-empty-icon">{m ? m.icon : "📂"}</div>
-      <p className="doc-empty-title">
-        {hasFilters ? "Aucun résultat" : `Aucun ${m?.label?.toLowerCase() || "document"} trouvé`}
-      </p>
-      <p className="doc-empty-sub">
-        {hasFilters
-          ? "Ajustez vos filtres."
-          : canCreate
-          ? "Commencez par ajouter votre premier document."
-          : "Aucun document disponible pour le moment."}
-      </p>
-      {hasFilters ? (
-        <button className="doc-btn-ghost doc-btn-sm" onClick={onClear}>Effacer les filtres</button>
-      ) : canCreate ? (
-        <button className="doc-btn-primary doc-btn-sm" onClick={onAdd}>+ Ajouter</button>
-      ) : null}
+      <p className="doc-empty-title">{hasFilters ? "Aucun résultat" : `Aucun ${m?.label?.toLowerCase() || "document"} trouvé`}</p>
+      <p className="doc-empty-sub">{hasFilters ? "Ajustez vos filtres." : canCreate ? "Commencez par ajouter votre premier document." : "Aucun document disponible."}</p>
+      {hasFilters
+        ? <button className="doc-btn-ghost doc-btn-sm" onClick={onClear}>Effacer les filtres</button>
+        : canCreate ? <button className="doc-btn-primary doc-btn-sm" onClick={onAdd}>+ Ajouter</button> : null}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DOC TABLE — colonne Auteur visible uniquement pour l'admin
+   DOC TABLE
 ═══════════════════════════════════════════════════════════ */
-function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
+function DocTable({ docs, isArticle, canEdit, onView, onDelete }) {
   return (
     <div className="doc-table-wrap">
       <table className="doc-table">
@@ -140,7 +107,6 @@ function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
             {isArticle && <th>Sous-type</th>}
             <th>Titre</th>
             <th>Auteur</th>
-            
             <th>Date</th>
             <th>Actions</th>
           </tr>
@@ -150,25 +116,17 @@ function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
             <tr key={doc.id} className="doc-row" onClick={() => onView(doc)}>
               <td><TypeBadge type={doc.type} /></td>
               {isArticle && (
-                <td>
-                  {doc.sous_type
-                    ? <span className="doc-sous-type">{doc.sous_type === "JOURNAL" ? "📰" : "🎤"} {doc.sous_type}</span>
-                    : <span className="doc-faint">—</span>}
+                <td>{doc.sous_type
+                  ? <span className="doc-sous-type">{doc.sous_type === "JOURNAL" ? "📰" : "🎤"} {doc.sous_type}</span>
+                  : <span className="doc-faint">—</span>}
                 </td>
               )}
               <td className="doc-title-cell">
                 <span className="doc-title-text">{doc.titre}</span>
                 {doc.mots_cles && <span className="doc-kw">{doc.mots_cles}</span>}
               </td>
-              
-                <td className="doc-cell-sm">
-                  {doc.auteur_nom || <span className="doc-faint">—</span>}
-                </td>
-              
-              
-              <td className="doc-cell-date">
-                {new Date(doc.date_creation).toLocaleDateString("fr-FR")}
-              </td>
+              <td className="doc-cell-sm">{doc.auteur_nom || <span className="doc-faint">—</span>}</td>
+              <td className="doc-cell-date">{new Date(doc.date_creation).toLocaleDateString("fr-FR")}</td>
               <td className="doc-cell-actions" onClick={e => e.stopPropagation()}>
                 <button className="doc-act-btn" title="Voir" onClick={() => onView(doc)}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -190,113 +148,95 @@ function DocTable({ docs, isArticle,  canEdit, onView, onDelete }) {
           ))}
         </tbody>
       </table>
-      <div className="doc-table-footer">
-        {docs.length} document{docs.length !== 1 ? "s" : ""}
-      </div>
+      <div className="doc-table-footer">{docs.length} document{docs.length !== 1 ? "s" : ""}</div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   FORMULAIRE DE DOCUMENT
+   FORMULAIRE CLASSIQUE
+   Utilisé pour :
+     • Création depuis une carte de type (lockedType fourni, type non modifiable)
+     • Modification d'un document (initial fourni, type en lecture seule)
+   Le type est TOUJOURS connu à l'entrée — jamais vide.
 ═══════════════════════════════════════════════════════════ */
-function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role  }) {
+function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading, role }) {
+  const isEditing    = !!initial;
+  const resolvedType = isEditing ? initial.type : lockedType;
+  const typeMeta     = TYPE_META[resolvedType] || { icon: "📄", color: "#888", label: resolvedType };
+
   const [form, setForm] = useState({
     titre: "", description: "", mots_cles: "",
-    type: defaultType || "RAPPORT", projet_id: "",
+    type: resolvedType, projet_id: "",
     doi: "", resume: "", citation_APA: "",
     sous_type: "JOURNAL", journal: "", maison_edition: "",
-    resolution: "", format: "",
-    visibilite: false,
+    resolution: "", format: "", visibilite: false,
     ...(initial || {}),
   });
-  const [file, setFile] = useState(null);
+  const [file,    setFile]    = useState(null);
   const [projets, setProjets] = useState([]);
 
   useEffect(() => {
-  const endpoint =
-    role === "ADMIN" ? "/projet" : "/projet/mes-projets";
-
-  apiFetch(endpoint)
-    .then(setProjets)
-    .catch(() => setProjets([]));
-}, [role]);
+    const endpoint = role === "ADMIN" ? "/projet" : "/projet/mes-projets";
+    apiFetch(endpoint).then(setProjets).catch(() => setProjets([]));
+  }, [role]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = e => {
     e.preventDefault();
     const fd = new FormData();
-    fd.append("titre", form.titre || "");
+    fd.append("titre",       form.titre || "");
     fd.append("description", form.description || "");
-    fd.append("mots_cles", form.mots_cles || "");
-    fd.append("type", form.type);
-    fd.append("projet_id", form.projet_id || "");
-    fd.append("visibilite", form.visibilite ? "true" : "false");
-    fd.append("lien", form.lien || "");
-
-    if (form.type === "ARTICLE") {
-      fd.append("sous_type", form.sous_type || "");
-      fd.append("doi", form.doi || "");
-      fd.append("resume", form.resume || "");
-      fd.append("citation_APA", form.citation_APA || "");
-      fd.append("journal", form.journal || "");
+    fd.append("mots_cles",   form.mots_cles || "");
+    fd.append("type",        resolvedType);
+    fd.append("projet_id",   form.projet_id || "");
+    fd.append("visibilite",  form.visibilite ? "true" : "false");
+    fd.append("lien",        form.lien || "");
+    if (resolvedType === "ARTICLE") {
+      fd.append("sous_type",      form.sous_type || "");
+      fd.append("doi",            form.doi || "");
+      fd.append("resume",         form.resume || "");
+      fd.append("citation_APA",   form.citation_APA || "");
+      fd.append("journal",        form.journal || "");
       fd.append("maison_edition", form.maison_edition || "");
     }
-    if (form.type === "RAPPORT") {
-      fd.append("doi", form.doi || "");
-    }
-
-    if (form.type === "IMAGE") {
+    if (resolvedType === "RAPPORT") fd.append("doi", form.doi || "");
+    if (resolvedType === "IMAGE") {
       fd.append("resolution", form.resolution || "");
-      fd.append("format", form.format || "");
+      fd.append("format",     form.format || "");
     }
-
     if (file) fd.append("file", file);
     onSubmit(fd);
   };
 
   return (
     <form className="doc-form" onSubmit={handleSubmit}>
-      <div className="doc-form-grid">
 
-        {/* Titre */}
+      {/* ── Bandeau type verrouillé ── */}
+      <div className="doc-form-type-locked" style={{ "--tc": typeMeta.color }}>
+        <span className="doc-form-type-locked-icon">{typeMeta.icon}</span>
+        <div className="doc-form-type-locked-info">
+          <span className="doc-form-type-locked-label">
+            {isEditing ? "Type de document" : "Type sélectionné"}
+          </span>
+          <span className="doc-form-type-locked-value">{typeMeta.label}</span>
+        </div>
+        <span className="doc-form-type-locked-badge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          {isEditing ? "Non modifiable" : "Verrouillé"}
+        </span>
+      </div>
+
+      <div className="doc-form-grid">
         <div className="doc-field doc-field-span">
           <label>Titre *</label>
-          <input
-            required
-            value={form.titre}
-            onChange={e => set("titre", e.target.value)}
-            placeholder="Titre du document"
-          />
+          <input required value={form.titre} onChange={e => set("titre", e.target.value)} placeholder="Titre du document" />
         </div>
 
-        {/* Type */}
-        <div className="doc-field">
-          <label>Type *</label>
-          <select
-            value={form.type}
-            onChange={e => {
-              const t = e.target.value;
-              setForm(f => ({
-                ...f, type: t,
-                ...(t !== "ARTICLE" ? { doi: "", resume: "", citation_APA: "", sous_type: "JOURNAL", journal: "", maison_edition: "" } : {}),
-                ...(t !== "RAPPORT" ? { doi: "" } : {}),
-                ...(t !== "IMAGE"   ? { resolution: "", format: "" } : {}),
-              }));
-            }}
-            disabled={!!initial || (!!defaultType && !initial)}
-            className={initial ? "doc-field-locked" : ""}
-          >
-            {DOCUMENT_TYPES.map(t => (
-              <option key={t} value={t}>{TYPE_META[t]?.icon} {TYPE_META[t]?.label}</option>
-            ))}
-          </select>
-          {initial && <small className="doc-field-hint">Le type ne peut pas être modifié</small>}
-        </div>
-
-        {/* Projet */}
-        <div className="doc-field">
+        <div className="doc-field doc-field-span">
           <label>Projet associé</label>
           <select value={form.projet_id || ""} onChange={e => set("projet_id", e.target.value)}>
             <option value="">— Aucun projet —</option>
@@ -304,80 +244,58 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
           </select>
         </div>
 
-        {/* Description */}
         <div className="doc-field doc-field-span">
           <label>Description</label>
-          <textarea
-            value={form.description || ""}
-            onChange={e => set("description", e.target.value)}
-            rows={3}
-            placeholder="Décrivez votre document…"
-          />
+          <textarea value={form.description || ""} onChange={e => set("description", e.target.value)} rows={3} placeholder="Décrivez votre document…" />
         </div>
 
-        {/* Mots-clés */}
         <div className="doc-field doc-field-span">
           <label>Mots-clés</label>
-          <input
-            value={form.mots_cles || ""}
-            onChange={e => set("mots_cles", e.target.value)}
-            placeholder="mot1, mot2, …"
-          />
+          <input value={form.mots_cles || ""} onChange={e => set("mots_cles", e.target.value)} placeholder="mot1, mot2, …" />
         </div>
 
-        {/* Visibilité */}
         <div className="doc-field doc-field-span">
           <label>Visibilité du document</label>
           <div
             className={`doc-visibility-toggle ${form.visibilite ? "on" : "off"}`}
             onClick={() => set("visibilite", !form.visibilite)}
-            role="switch"
-            aria-checked={form.visibilite}
-            tabIndex={0}
+            role="switch" aria-checked={form.visibilite} tabIndex={0}
             onKeyDown={e => e.key === " " && set("visibilite", !form.visibilite)}
           >
             <span className="doc-vis-track"><span className="doc-vis-thumb" /></span>
             <div className="doc-vis-text">
               <span className="doc-vis-state">{form.visibilite ? "🌐 Public" : "🔒 Privé"}</span>
               <small className="doc-field-hint">
-                {form.visibilite
-                  ? "Visible par tous les utilisateurs connectés"
-                  : "Visible uniquement par vous et l'administrateur"}
+                {form.visibilite ? "Visible par tous les utilisateurs connectés" : "Visible uniquement par vous et l'administrateur"}
               </small>
             </div>
           </div>
         </div>
 
-        {/* Champs RAPPORT */}
-        {form.type === "RAPPORT" && (
+        {resolvedType === "RAPPORT" && (
           <div className="doc-field doc-field-span">
             <label>DOI</label>
             <input value={form.doi || ""} onChange={e => set("doi", e.target.value)} placeholder="10.xxxx/xxxxx" />
           </div>
         )}
 
-        {/* Champs ARTICLE */}
-        {form.type === "ARTICLE" && (<>
+        {resolvedType === "ARTICLE" && (<>
           <div className="doc-field">
             <label>Sous-type *</label>
-            <select
-              value={form.sous_type}
-              onChange={e => set("sous_type", e.target.value)}
-              disabled={!!initial}
-              className={initial ? "doc-field-locked" : ""}
-            >
+            <select value={form.sous_type} onChange={e => set("sous_type", e.target.value)}
+              disabled={isEditing} className={isEditing ? "doc-field-locked" : ""}>
               <option value="JOURNAL">📰 Journal</option>
               <option value="CONFERENCE">🎤 Conférence</option>
             </select>
-            {initial && <small className="doc-field-hint">Le sous-type ne peut pas être modifié</small>}
+            {isEditing && <small className="doc-field-hint">Le sous-type ne peut pas être modifié</small>}
           </div>
           <div className="doc-field">
             <label>DOI</label>
-            <input value={form.doi|| ""} onChange={e => set("doi", e.target.value)} placeholder="10.xxxx/xxxxx" />
+            <input value={form.doi || ""} onChange={e => set("doi", e.target.value)} placeholder="10.xxxx/xxxxx" />
           </div>
           <div className="doc-field">
             <label>Citation APA</label>
-            <input value={form.citation_APA|| ""} onChange={e => set("citation_APA", e.target.value)} />
+            <input value={form.citation_APA || ""} onChange={e => set("citation_APA", e.target.value)} />
           </div>
           <div className="doc-field doc-field-span">
             <label>Résumé</label>
@@ -385,7 +303,7 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
           </div>
           <div className="doc-field">
             <label>Journal</label>
-            <input value={form.journal|| "" } onChange={e => set("journal", e.target.value)} />
+            <input value={form.journal || ""} onChange={e => set("journal", e.target.value)} />
           </div>
           <div className="doc-field">
             <label>Maison d'édition</label>
@@ -393,11 +311,10 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
           </div>
         </>)}
 
-        {/* Champs IMAGE */}
-        {form.type === "IMAGE" && (<>
+        {resolvedType === "IMAGE" && (<>
           <div className="doc-field">
             <label>Résolution</label>
-            <input value={form.resolution|| ""} onChange={e => set("resolution", e.target.value)} placeholder="1920x1080" />
+            <input value={form.resolution || ""} onChange={e => set("resolution", e.target.value)} placeholder="1920x1080" />
           </div>
           <div className="doc-field">
             <label>Format</label>
@@ -405,26 +322,13 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
           </div>
         </>)}
 
-        {/* Fichier */}
         <div className="doc-field doc-field-span">
           <label>Fichier</label>
           <input type="file" onChange={e => setFile(e.target.files[0])} />
           {form.lien && (
             <div className="doc-field-current-file">
-              <small className="file-current" style={{ marginRight: "12px" }}>
-                Fichier actuel : {form.lien.split(/[\\/]/).pop()}
-              </small>
-
-              <button
-                type="button"
-                className="doc-btn-danger "
-                onClick={() => {
-                  setFile(null);
-                  set("lien", "");  // Ceci déclenchera la suppression dans le backend
-                }}
-              >
-                Supprimer le fichier
-              </button>
+              <small className="file-current" style={{ marginRight: "12px" }}>Fichier actuel : {form.lien.split(/[\\/]/).pop()}</small>
+              <button type="button" className="doc-btn-danger" onClick={() => { setFile(null); set("lien", ""); }}>Supprimer le fichier</button>
             </div>
           )}
         </div>
@@ -433,9 +337,7 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
       <div className="doc-form-actions">
         <button type="button" className="doc-btn-ghost" onClick={onCancel}>Annuler</button>
         <button type="submit" className="doc-btn-primary" disabled={loading}>
-          {loading
-            ? <><span className="doc-btn-spinner" /> Enregistrement…</>
-            : initial ? "✎ Enregistrer" : "+ Créer"}
+          {loading ? <><span className="doc-btn-spinner" /> Enregistrement…</> : isEditing ? "✎ Enregistrer" : "+ Créer"}
         </button>
       </div>
     </form>
@@ -448,29 +350,21 @@ function DocumentForm({ initial, defaultType, onSubmit, onCancel, loading, role 
 function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEdit, canToggleVis }) {
   const m = TYPE_META[doc.type] || { icon: "📄", color: "#888" };
   const isArticle = doc.type === "ARTICLE";
-
   const getFileUrl  = lien => lien ? `http://localhost:8000/${lien.replace(/\\/g, "/")}` : null;
   const getExt      = lien => lien ? lien.split(".").pop().toLowerCase() : "";
   const getBasename = lien => lien ? lien.split(/[\\/]/).pop() : "";
 
   const handleDownload = async () => {
     try {
-      const res = await fetch(`${API_BASE}/documents/${doc.id}/download`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) throw new Error("Erreur");
+      const res = await fetch(`${API_BASE}/documents/${doc.id}/download`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error();
       const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url;
-      a.download = `${doc.titre}.${getExt(doc.lien)}`;
-      document.body.appendChild(a);
-      a.click();
-      URL.revokeObjectURL(url);
-      a.remove();
-    } catch {
-      alert("Erreur lors du téléchargement");
-    }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${doc.titre}.${getExt(doc.lien)}`;
+      document.body.appendChild(a); a.click();
+      URL.revokeObjectURL(url); a.remove();
+    } catch { alert("Erreur lors du téléchargement"); }
   };
 
   const ext   = getExt(doc.lien);
@@ -482,8 +376,6 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
     <>
       <div className="doc-panel-backdrop" onClick={onClose} />
       <div className="doc-detail-panel">
-
-        {/* Header */}
         <div className="doc-panel-header">
           <div className="doc-panel-header-left">
             <span className="doc-panel-icon" style={{ color: m.color }}>{m.icon}</span>
@@ -491,8 +383,6 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
           </div>
           <button className="doc-panel-close" onClick={onClose}>✕</button>
         </div>
-
-        {/* Body */}
         <div className="doc-panel-body">
           <div className="doc-panel-hero" style={{ "--hc": m.color }}>
             <div className="doc-panel-hero-title">{doc.titre}</div>
@@ -500,53 +390,33 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
               <TypeBadge type={doc.type} />
               <VisibilityChip visibilite={doc.visibilite} />
               {isArticle && doc.sous_type && (
-                <span className="doc-chip-sub">
-                  {doc.sous_type === "JOURNAL" ? "📰" : "🎤"} {doc.sous_type}
-                </span>
+                <span className="doc-chip-sub">{doc.sous_type === "JOURNAL" ? "📰" : "🎤"} {doc.sous_type}</span>
               )}
             </div>
           </div>
-
           <dl className="doc-panel-meta">
-            {/* Auteur visible pour l'admin */}
-            {doc.auteur_nom && (
-              <>
-                <dt>Auteur</dt>
-                <dd>{doc.auteur_nom}{doc.auteur_email && <em> · {doc.auteur_email}</em>}</dd>
-              </>
-            )}
-            {doc.projet_titre && <><dt>Projet</dt><dd>📁 {doc.projet_titre}</dd></>}
+            {doc.auteur_nom && <><dt>Auteur</dt><dd>{doc.auteur_nom}{doc.auteur_email && <em> · {doc.auteur_email}</em>}</dd></>}
+            {doc.projet_titre    && <><dt>Projet</dt><dd>📁 {doc.projet_titre}</dd></>}
             <dt>Date de création</dt>
-            <dd>
-              {new Date(doc.date_creation).toLocaleDateString("fr-FR", {
-                day: "numeric", month: "long", year: "numeric",
-              })}
-            </dd>
-            {doc.mots_cles      && <><dt>Mots-clés</dt><dd>{doc.mots_cles}</dd></>}
-            {doc.description    && <><dt>Description</dt><dd>{doc.description}</dd></>}
-            {doc.doi            && <><dt>DOI</dt><dd><a href={`https://doi.org/${doc.doi}`} target="_blank" rel="noreferrer">{doc.doi}</a></dd></>}
-            {doc.resume         && <><dt>Résumé</dt><dd>{doc.resume}</dd></>}
-            {doc.citation_apa   && <><dt>APA</dt><dd>{doc.citation_apa}</dd></>}
-            {doc.journal        && <><dt>Journal</dt><dd>{doc.journal}</dd></>}
-            {doc.maison_edition && <><dt>Maison d'édition</dt><dd>{doc.maison_edition}</dd></>}
-            {doc.resolution     && <><dt>Résolution</dt><dd>{doc.resolution}</dd></>}
-            {doc.format         && <><dt>Format</dt><dd>{doc.format}</dd></>}
+            <dd>{new Date(doc.date_creation).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</dd>
+            {doc.mots_cles       && <><dt>Mots-clés</dt><dd>{doc.mots_cles}</dd></>}
+            {doc.description     && <><dt>Description</dt><dd>{doc.description}</dd></>}
+            {doc.doi             && <><dt>DOI</dt><dd><a href={`https://doi.org/${doc.doi}`} target="_blank" rel="noreferrer">{doc.doi}</a></dd></>}
+            {doc.resume          && <><dt>Résumé</dt><dd>{doc.resume}</dd></>}
+            {doc.citation_apa    && <><dt>APA</dt><dd>{doc.citation_apa}</dd></>}
+            {doc.journal         && <><dt>Journal</dt><dd>{doc.journal}</dd></>}
+            {doc.maison_edition  && <><dt>Maison d'édition</dt><dd>{doc.maison_edition}</dd></>}
+            {doc.resolution      && <><dt>Résolution</dt><dd>{doc.resolution}</dd></>}
+            {doc.format          && <><dt>Format</dt><dd>{doc.format}</dd></>}
           </dl>
-
-          {/* Prévisualisation fichier */}
           {doc.lien && (
             <div className="doc-panel-file">
               {isImg && <img src={getFileUrl(doc.lien)} alt={doc.titre} className="doc-panel-preview" />}
               {isVid && <video controls className="doc-panel-preview"><source src={getFileUrl(doc.lien)} /></video>}
               {isPdf && <iframe src={getFileUrl(doc.lien)} title={doc.titre} className="doc-panel-iframe" />}
               <div className="doc-panel-file-actions">
-                <a
-                  href={getFileUrl(doc.lien)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="doc-file-link"
-                  style={{ color: m.color, borderColor: `${m.color}40`, background: `${m.color}10` }}
-                >
+                <a href={getFileUrl(doc.lien)} target="_blank" rel="noreferrer" className="doc-file-link"
+                  style={{ color: m.color, borderColor: `${m.color}40`, background: `${m.color}10` }}>
                   👁️ Ouvrir {ext.toUpperCase()}
                 </a>
                 <button onClick={handleDownload} className="doc-file-dl">⬇️ Télécharger</button>
@@ -555,24 +425,15 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
             </div>
           )}
         </div>
-
-        {/* Footer — actions selon les droits */}
         <div className="doc-panel-footer">
-          {canEdit && (
-            <button className="doc-btn-ghost" onClick={() => onEdit(doc)}>✎ Modifier</button>
-          )}
+          {canEdit && <button className="doc-btn-ghost" onClick={() => onEdit(doc)}>✎ Modifier</button>}
           {canToggleVis && (
-            <button
-              className={`doc-btn-vis ${doc.visibilite ? "private" : "public"}`}
-              onClick={() => onToggleVisibility(doc.id, !doc.visibilite)}
-              title={doc.visibilite ? "Rendre privé" : "Rendre public"}
-            >
+            <button className={`doc-btn-vis ${doc.visibilite ? "private" : "public"}`}
+              onClick={() => onToggleVisibility(doc.id, !doc.visibilite)}>
               {doc.visibilite ? "🔒 Rendre privé" : "🌐 Rendre public"}
             </button>
           )}
-          {canEdit && (
-            <button className="doc-btn-danger" onClick={() => onDelete(doc.id)}>🗑️ Supprimer</button>
-          )}
+          {canEdit && <button className="doc-btn-danger" onClick={() => onDelete(doc.id)}>🗑️ Supprimer</button>}
         </div>
       </div>
     </>
@@ -583,198 +444,118 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
    COMPOSANT PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
 export default function Document() {
-  /* ── State ── */
   const [docs,        setDocs]        = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
   const [activeType,  setActiveType]  = useState(null);
   const [selected,    setSelected]    = useState(null);
-  const [editing,     setEditing]     = useState(null);
-  const [formLoading, setFormLoading] = useState(false);
-  const [confirm,     setConfirm]     = useState(null);
-  const [toast,       setToast]       = useState(null);
-  const [search,      setSearch]      = useState("");
-  const [yearFilter,  setYearFilter]  = useState("ALL");
-  const [visFilter,   setVisFilter]   = useState("ALL");
-  const [page,        setPage]        = useState(1);
-  const [globalQ,     setGlobalQ]     = useState("");
+  /*
+    editing.__mode :
+      "ai"   → modal IA (+ Nouveau)
+      "add"  → formulaire classique création depuis carte (type verrouillé)
+      "edit" → formulaire classique modification
+  */
+  const [editing,      setEditing]      = useState(null);
+  const [formLoading,  setFormLoading]  = useState(false);
+  const [confirm,      setConfirm]      = useState(null);
+  const [toast,        setToast]        = useState(null);
+  const [search,       setSearch]       = useState("");
+  const [yearFilter,   setYearFilter]   = useState("ALL");
+  const [visFilter,    setVisFilter]    = useState("ALL");
+  const [page,         setPage]         = useState(1);
+  const [globalQ,      setGlobalQ]      = useState("");
   const perPage = 10;
   const [expandedView, setExpandedView] = useState(false);
 
-  /* ── Rôle courant ── */
   const currentUser   = getUserFromToken();
   const currentUserId = currentUser?.id;
   const caps          = getRoleCapabilities(currentUser?.role);
 
-  /* ── Toast ── */
-  const showToast = (msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3200);
-  };
+  const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3200); };
 
-  /* ── Chargement des données ── */
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setDocs(await apiFetch("/documents"));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError(null);
+    try { setDocs(await apiFetch("/documents")); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Filtrage selon le rôle ──
-     filterOwn = true → on n'affiche que ses propres docs dans les cartes/tableau
-     La recherche globale reste sur tous les docs accessibles (retournés par le backend) */
-  const visibleDocs = caps.filterOwn
-    ? docs.filter(d => d.auteur_id === currentUserId)
-    : docs;
+  const visibleDocs = caps.filterOwn ? docs.filter(d => d.auteur_id === currentUserId) : docs;
+  const countByType = DOCUMENT_TYPES.reduce((acc, t) => { acc[t] = visibleDocs.filter(d => d.type === t).length; return acc; }, {});
+  const typeDocs    = activeType ? visibleDocs.filter(d => d.type === activeType) : [];
+  const years       = [...new Set(typeDocs.map(d => new Date(d.date_creation).getFullYear()))].sort((a, b) => b - a);
+  const isArticle   = activeType === "ARTICLE";
 
-  /* Compteurs par type (basés sur visibleDocs) */
-  const countByType = DOCUMENT_TYPES.reduce((acc, t) => {
-    acc[t] = visibleDocs.filter(d => d.type === t).length;
-    return acc;
-  }, {});
-
-  /* Documents du type actif */
-  const typeDocs  = activeType ? visibleDocs.filter(d => d.type === activeType) : [];
-  const years     = [...new Set(typeDocs.map(d => new Date(d.date_creation).getFullYear()))].sort((a, b) => b - a);
-  const isArticle = activeType === "ARTICLE";
-
-  /* Fonction de correspondance pour la recherche */
   const matchSearch = (d, q) => {
     const lq = q.toLowerCase();
-    return (
-      d.titre?.toLowerCase().includes(lq)          ||
-      d.auteur_nom?.toLowerCase().includes(lq)     ||
-      d.mots_cles?.toLowerCase().includes(lq)      ||
-      d.projet_titre?.toLowerCase().includes(lq)   ||
-      new Date(d.date_creation).toLocaleDateString("fr-FR").includes(lq)
-    );
+    return d.titre?.toLowerCase().includes(lq) || d.auteur_nom?.toLowerCase().includes(lq) ||
+      d.mots_cles?.toLowerCase().includes(lq) || d.projet_titre?.toLowerCase().includes(lq) ||
+      new Date(d.date_creation).toLocaleDateString("fr-FR").includes(lq);
   };
 
-  /* Filtres dans la liste du type actif */
   const filtered = typeDocs.filter(d => {
-    const matchS = !search     || matchSearch(d, search);
+    const matchS = !search    || matchSearch(d, search);
     const matchY = yearFilter === "ALL" || new Date(d.date_creation).getFullYear().toString() === yearFilter;
     const matchV = visFilter  === "ALL" || (visFilter === "PUBLIC" ? d.visibilite : !d.visibilite);
     return matchS && matchY && matchV;
   });
 
-  const totalPages     = Math.ceil(filtered.length / perPage);
-  const paginated      = filtered.slice((page - 1) * perPage, page * perPage);
+  const totalPages    = Math.ceil(filtered.length / perPage);
+  const paginated     = filtered.slice((page - 1) * perPage, page * perPage);
+  const globalResults = globalQ.trim() ? docs.filter(d => matchSearch(d, globalQ)) : [];
+  const statsTotal    = visibleDocs.length;
+  const statsPublic   = visibleDocs.filter(d => d.visibilite).length;
+  const statsPrivate  = visibleDocs.filter(d => !d.visibilite).length;
 
-  /* Recherche globale — sur tous les docs retournés par le backend */
-  const globalResults  = globalQ.trim() ? docs.filter(d => matchSearch(d, globalQ)) : [];
-
-  /* Statistiques header basées sur visibleDocs */
-  const statsTotal   = visibleDocs.length;
-  const statsPublic  = visibleDocs.filter(d => d.visibilite).length;
-  const statsPrivate = visibleDocs.filter(d => !d.visibilite).length;
-
-  /* ── CRUD ── */
   const handleCreate = async fd => {
     setFormLoading(true);
-    try {
-      await apiFetch("/documents", { method: "POST", body: fd });
-      showToast("Document créé ✓");
-      setEditing(null);
-      loadData();
-    } catch (e) {
-      showToast(e.message, "error");
-    } finally {
-      setFormLoading(false);
-    }
+    try { await apiFetch("/documents", { method: "POST", body: fd }); showToast("Document créé ✓"); setEditing(null); loadData(); }
+    catch (e) { showToast(e.message, "error"); }
+    finally { setFormLoading(false); }
   };
 
   const handleUpdate = async fd => {
     setFormLoading(true);
-    try {
-      await apiFetch(`/documents/${editing.id}`, { method: "PUT", body: fd });
-      showToast("Mis à jour ✓");
-      setEditing(null);
-      setSelected(null);
-      loadData();
-    } catch (e) {
-      showToast(e.message, "error");
-    } finally {
-      setFormLoading(false);
-    }
+    try { await apiFetch(`/documents/${editing.id}`, { method: "PUT", body: fd }); showToast("Mis à jour ✓"); setEditing(null); setSelected(null); loadData(); }
+    catch (e) { showToast(e.message, "error"); }
+    finally { setFormLoading(false); }
   };
 
   const handleDelete = async id => {
-    try {
-      await apiFetch(`/documents/${id}`, { method: "DELETE" });
-      showToast("Supprimé");
-      setConfirm(null);
-      setSelected(null);
-      loadData();
-    } catch (e) {
-      showToast(e.message, "error");
-    }
+    try { await apiFetch(`/documents/${id}`, { method: "DELETE" }); showToast("Supprimé"); setConfirm(null); setSelected(null); loadData(); }
+    catch (e) { showToast(e.message, "error"); }
   };
 
   const handleToggleVisibility = async (id, newVal) => {
     try {
-      await apiFetch(`/documents/${id}/visibilite`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibilite: newVal }),
-      });
+      await apiFetch(`/documents/${id}/visibilite`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visibilite: newVal }) });
       showToast(newVal ? "Document rendu public 🌐" : "Document rendu privé 🔒");
-      setSelected(null);
-      loadData();
-    } catch (e) {
-      showToast(e.message, "error");
-    }
+      setSelected(null); loadData();
+    } catch (e) { showToast(e.message, "error"); }
   };
 
-  const openDetail = async doc => {
-    try {
-      setSelected(await apiFetch(`/documents/${doc.id}`));
-    } catch {
-      setSelected(doc);
-    }
-  };
+  const openDetail = async doc => { try { setSelected(await apiFetch(`/documents/${doc.id}`)); } catch { setSelected(doc); } };
 
   const selectType = t => {
-  if (activeType === t && expandedView) {
-    // Si on clique sur le même type déjà actif en vue étendue, on rétrécit
-    setExpandedView(false);
-    setActiveType(null);
-  } else if (activeType === t && !expandedView) {
-    // Si on clique sur le type actif mais vue compacte, on étend
-    setExpandedView(true);
-  } else {
-    // Nouveau type sélectionné
-    setActiveType(t);
-    setExpandedView(true);
-    setSearch("");
-    setYearFilter("ALL");
-    setVisFilter("ALL");
-    setPage(1);
-    setSelected(null);
-  }
-};
-
-
-  const openAdd = () => setEditing({ __new: true, defaultType: activeType || DOCUMENT_TYPES[0] });
+    if (activeType === t && expandedView) { setExpandedView(false); setActiveType(null); }
+    else if (activeType === t) { setExpandedView(true); }
+    else { setActiveType(t); setExpandedView(true); setSearch(""); setYearFilter("ALL"); setVisFilter("ALL"); setPage(1); setSelected(null); }
+  };
 
   const clearFilters = () => { setSearch(""); setYearFilter("ALL"); setVisFilter("ALL"); };
 
-  /* ── Rendu ── */
+  const classicModalTitle = () => {
+    if (!editing) return "";
+    if (editing.__mode === "add")  return `Ajouter — ${TYPE_META[editing.type]?.label || editing.type}`;
+    if (editing.__mode === "edit") return `Modifier — ${editing.titre}`;
+    return "";
+  };
+
   return (
     <div className="doc-root">
-      {/* Toast */}
-      {toast && (
-        <div className={`doc-toast doc-toast-${toast.type}`}>
-          {toast.type === "success" ? "✓" : "⚠"} {toast.msg}
-        </div>
-      )}
+      {toast && <div className={`doc-toast doc-toast-${toast.type}`}>{toast.type === "success" ? "✓" : "⚠"} {toast.msg}</div>}
 
       {/* ══ HEADER ══ */}
       <div className="doc-header">
@@ -794,67 +575,46 @@ export default function Document() {
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
             <input
-              placeholder={caps.isAdmin
-                ? "Rechercher par auteur, titre, mots-clés, projet, date…"
-                : "Rechercher dans mes documents…"}
-              value={globalQ}
-              onChange={e => setGlobalQ(e.target.value)}
+              placeholder={caps.isAdmin ? "Rechercher par auteur, titre, mots-clés, projet, date…" : "Rechercher dans mes documents…"}
+              value={globalQ} onChange={e => setGlobalQ(e.target.value)}
             />
             {globalQ && <button onClick={() => setGlobalQ("")}>✕</button>}
           </div>
           {caps.canCreate && (
-            <button className="doc-btn-primary" onClick={openAdd}>+ Nouveau</button>
+            /* Ouvre la modal IA */
+            <button className="doc-btn-primary doc-btn-ai" onClick={() => setEditing({ __mode: "ai" })}>
+              <span className="doc-btn-ai-sparkle">✦</span> + Nouveau
+            </button>
           )}
         </div>
       </div>
 
       {/* ══ BODY ══ */}
       <div className="doc-body">
-
         {globalQ.trim() ? (
-          /* ── Résultats de recherche globale ── */
           <div className="doc-section">
-            <div className="doc-section-label">
-              {globalResults.length} résultat{globalResults.length !== 1 ? "s" : ""} pour « {globalQ} »
-            </div>
+            <div className="doc-section-label">{globalResults.length} résultat{globalResults.length !== 1 ? "s" : ""} pour « {globalQ} »</div>
             {globalResults.length === 0 ? (
               <div className="doc-empty">
-                <div>
-                  <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-                  </svg>
-                </div>
+                <div><svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
                 <p className="doc-empty-title">Aucun résultat</p>
               </div>
             ) : (
-              <DocTable
-                docs={globalResults}
-                isArticle={false}
-                isAdmin={caps.isAdmin}
-                canEdit={caps.canEdit}
-                onView={openDetail}
-                onDelete={id => setConfirm(id)}
-              />
+              <DocTable docs={globalResults} isArticle={false} canEdit={caps.canEdit} onView={openDetail} onDelete={id => setConfirm(id)} />
             )}
           </div>
         ) : (
           <>
-            {/* ── Cartes de types ── */}
             <div className="doc-section">
-              
               {!loading && !error && (
-                <div className={`doc-type-grid ${expandedView ? 'expanded' : 'compact'}`}>
+                <div className={`doc-type-grid ${expandedView ? "expanded" : "compact"}`}>
                   {DOCUMENT_TYPES.map(t => {
                     const m = TYPE_META[t];
                     const count = countByType[t];
                     const active = activeType === t;
                     return (
-                      <button
-                        key={t}
-                        className={`doc-type-card ${active ? "active" : ""} ${count === 0 ? "empty" : ""}`}
-                        style={{ "--tc": m.color }}
-                        onClick={() => selectType(active ? t : t)}
-                      >
+                      <button key={t} className={`doc-type-card ${active ? "active" : ""} ${count === 0 ? "empty" : ""}`}
+                        style={{ "--tc": m.color }} onClick={() => selectType(t)}>
                         <span className="doc-type-card-icon">{m.icon}</span>
                         <span className="doc-type-card-label">{m.label}</span>
                         <span className="doc-type-card-count">{count}</span>
@@ -866,114 +626,62 @@ export default function Document() {
               )}
             </div>
 
-            {/* ── Liste filtrée du type actif ── */}
             {activeType && (
               <div className="doc-section">
                 <div className="doc-filters-bar">
                   <div className="doc-filter-type-badge" style={{ "--tc": TYPE_META[activeType].color }}>
                     {TYPE_META[activeType].icon} {TYPE_META[activeType].label}s
                   </div>
-
-                  {/* Recherche locale */}
                   <div className="doc-filter-search">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                     </svg>
-                    <input
-                      placeholder="Filtrer…"
-                      value={search}
-                      onChange={e => { setSearch(e.target.value); setPage(1); }}
-                      style={{ backgroundColor: "#fefcfc"}}
-                    />
+                    <input placeholder="Filtrer…" value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ backgroundColor: "#fefcfc" }} />
                     {search && <button onClick={() => setSearch("")}>✕</button>}
                   </div>
-
-                  {/* Filtre année */}
-                  <select
-                    className="doc-filter-sel"
-                    value={yearFilter}
-                    onChange={e => { setYearFilter(e.target.value); setPage(1); }}
-                    style={{ backgroundColor: "#fefcfc"}}
-                  >
+                  <select className="doc-filter-sel" value={yearFilter}
+                    onChange={e => { setYearFilter(e.target.value); setPage(1); }} style={{ backgroundColor: "#fefcfc" }}>
                     <option value="ALL">Toutes les années</option>
                     {years.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
-
-                  {/* Filtre visibilité */}
-                  <select
-                    className="doc-filter-sel"
-                    value={visFilter}
-                    onChange={e => { setVisFilter(e.target.value); setPage(1); }}
-                    style={{ backgroundColor: "#fefcfc"}}
-                  >
+                  <select className="doc-filter-sel" value={visFilter}
+                    onChange={e => { setVisFilter(e.target.value); setPage(1); }} style={{ backgroundColor: "#fefcfc" }}>
                     <option value="ALL">Toutes visibilités</option>
                     <option value="PUBLIC">🌐 Public</option>
                     <option value="PRIVATE">🔒 Privé</option>
                   </select>
-
-                  <span className="doc-filter-count">
-                    {filtered.length} document{filtered.length !== 1 ? "s" : ""}
-                  </span>
-
+                  <span className="doc-filter-count">{filtered.length} document{filtered.length !== 1 ? "s" : ""}</span>
                   {caps.canCreate && (
-                    <button
-                      className="doc-btn-primary doc-btn-sm"
-                      style={{ marginLeft: "auto" }}
-                      onClick={openAdd}
-                    >
+                    /* Ouvre le formulaire classique avec type verrouillé */
+                    <button className="doc-btn-primary doc-btn-sm" style={{ marginLeft: "auto" }}
+                      onClick={() => setEditing({ __mode: "add", type: activeType })}>
                       + Ajouter
                     </button>
                   )}
                 </div>
 
                 {filtered.length === 0 ? (
-                  <EmptyState
-                    type={activeType}
-                    onAdd={openAdd}
+                  <EmptyState type={activeType} onAdd={() => setEditing({ __mode: "add", type: activeType })}
                     hasFilters={!!(search || yearFilter !== "ALL" || visFilter !== "ALL")}
-                    onClear={clearFilters}
-                    canCreate={caps.canCreate}
-                  />
+                    onClear={clearFilters} canCreate={caps.canCreate} />
                 ) : (
                   <>
-                    <DocTable
-                      docs={paginated}
-                      isArticle={isArticle}
-                      isAdmin={caps.isAdmin}
-                      canEdit={caps.canEdit}
-                      onView={openDetail}
-                      onDelete={id => setConfirm(id)}
-                    />
+                    <DocTable docs={paginated} isArticle={isArticle} canEdit={caps.canEdit}
+                      onView={openDetail} onDelete={id => setConfirm(id)} />
                     {totalPages > 1 && (
                       <div className="doc-pagination">
                         <span className="doc-page-info">Page {page} / {totalPages}</span>
                         <div className="doc-page-btns">
-                          <button
-                            className="doc-page-btn"
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                          >←</button>
+                          <button className="doc-page-btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>←</button>
                           {[...Array(totalPages)].map((_, i) => {
                             const n = i + 1;
                             if (n === 1 || n === totalPages || Math.abs(n - page) <= 1)
-                              return (
-                                <button
-                                  key={n}
-                                  className={`doc-page-btn ${page === n ? "active" : ""}`}
-                                  onClick={() => setPage(n)}
-                                >
-                                  {n}
-                                </button>
-                              );
-                            if (Math.abs(n - page) === 2)
-                              return <span key={n} className="doc-page-dots">…</span>;
+                              return <button key={n} className={`doc-page-btn ${page === n ? "active" : ""}`} onClick={() => setPage(n)}>{n}</button>;
+                            if (Math.abs(n - page) === 2) return <span key={n} className="doc-page-dots">…</span>;
                             return null;
                           })}
-                          <button
-                            className="doc-page-btn"
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                            disabled={page === totalPages}
-                          >→</button>
+                          <button className="doc-page-btn" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>→</button>
                         </div>
                       </div>
                     )}
@@ -987,26 +695,28 @@ export default function Document() {
 
       {/* ══ PANNEAU DÉTAIL ══ */}
       {selected && !editing && (
-        <DetailPanel
-          doc={selected}
-          onClose={() => setSelected(null)}
+        <DetailPanel doc={selected} onClose={() => setSelected(null)}
           onDelete={id => { setConfirm(id); setSelected(null); }}
-          onEdit={doc => { setEditing(doc); setSelected(null); }}
+          onEdit={doc => { setEditing({ __mode: "edit", ...doc }); setSelected(null); }}
           onToggleVisibility={handleToggleVisibility}
-          canEdit={caps.canEdit}
-          canToggleVis={caps.canToggleVis}
-          
+          canEdit={caps.canEdit} canToggleVis={caps.canToggleVis} />
+      )}
+
+      {/* ══ MODAL IA — "+ Nouveau" ══ */}
+      {editing?.__mode === "ai" && (
+        <IA
+          role={currentUser?.role}
+          onSubmit={handleCreate}
+          onClose={() => setEditing(null)}
+          loading={formLoading}
         />
       )}
 
-      {/* ══ MODALS ══ */}
-      {editing && editing.__new && (
-        <DocModal
-          title={`Nouveau ${TYPE_META[editing.defaultType]?.label || "document"}`}
-          onClose={() => setEditing(null)}
-        >
-          <DocumentForm
-            defaultType={editing.defaultType}
+      {/* ══ MODAL CLASSIQUE — "+ Ajouter" depuis carte (type verrouillé) ══ */}
+      {editing?.__mode === "add" && (
+        <DocModal title={classicModalTitle()} onClose={() => setEditing(null)}>
+          <ClassicDocumentForm
+            lockedType={editing.type}
             onSubmit={handleCreate}
             onCancel={() => setEditing(null)}
             loading={formLoading}
@@ -1014,9 +724,11 @@ export default function Document() {
           />
         </DocModal>
       )}
-      {editing && !editing.__new && (
-        <DocModal title={`Modifier — ${editing.titre}`} onClose={() => setEditing(null)}>
-          <DocumentForm
+
+      {/* ══ MODAL CLASSIQUE — Modifier ══ */}
+      {editing?.__mode === "edit" && (
+        <DocModal title={classicModalTitle()} onClose={() => setEditing(null)}>
+          <ClassicDocumentForm
             initial={editing}
             onSubmit={handleUpdate}
             onCancel={() => setEditing(null)}
@@ -1025,19 +737,16 @@ export default function Document() {
           />
         </DocModal>
       )}
+
+      {/* ══ CONFIRMATION SUPPRESSION ══ */}
       {confirm && (
         <DocModal title="Confirmer la suppression" onClose={() => setConfirm(null)}>
           <div className="doc-confirm">
             <div className="doc-confirm-icon">🗑️</div>
-            <p>
-              Cette action est <strong>irréversible</strong>.
-              Le document et son fichier seront définitivement supprimés.
-            </p>
+            <p>Cette action est <strong>irréversible</strong>. Le document et son fichier seront définitivement supprimés.</p>
             <div className="doc-form-actions">
               <button className="doc-btn-ghost" onClick={() => setConfirm(null)}>Annuler</button>
-              <button className="doc-btn-danger" onClick={() => handleDelete(confirm)}>
-                Supprimer définitivement
-              </button>
+              <button className="doc-btn-danger" onClick={() => handleDelete(confirm)}>Supprimer définitivement</button>
             </div>
           </div>
         </DocModal>

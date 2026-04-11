@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const pool = require("./config/db");
 const bcrypt = require('bcryptjs');
@@ -6,7 +7,6 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
-require('dotenv').config();
 app.use(cors({
   origin: 'http://localhost:5173',
   credentials: true,
@@ -60,6 +60,9 @@ app.use("/api/utilisateur", utilisateurRoutes);
 
 const rapportRouter = require("./routes/rapport");
 app.use("/api/rapport", rapportRouter);
+
+const aiRouter = require("./routes/Ai");
+app.use("/api/ai", aiRouter);
 
 // 404
 app.use((req, res) => {
