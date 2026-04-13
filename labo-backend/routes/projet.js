@@ -280,11 +280,13 @@ router.put('/:id', auth, estAdminProjet, async (req, res) => {
       WHERE id = $9
       RETURNING *
     `, [
-      titre || null, description !== undefined ? description : null,
+      titre || null, 
+      description !== undefined ? description : null,
       domaine !== undefined ? domaine : null,
       mots_cles !== undefined ? mots_cles : null,
       annee_publication ? parseInt(annee_publication) : null,
-      date_debut !== undefined ? date_debut : null, date_fin !== undefined ? date_fin : null,
+      date_debut !== undefined ? date_debut : null,
+      date_fin !== undefined ? date_fin : null,
       statut || null,
       id
     ]);
@@ -320,7 +322,87 @@ router.patch('/:id/statut', auth, estAdminProjet, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/projet/:id/documents/:docId
+// Retire un document du projet (projet_id → NULL)
+// sans le supprimer globalement.
+// Accès : créateur du projet ou ADMIN
+// ─────────────────────────────────────────────────────────────
+router.delete('/:id/documents/:docId', auth, estAdminProjet, async (req, res) => {
+  const { id, docId } = req.params;
 
+  try {
+    // Vérifier que le document appartient bien à ce projet
+    const docCheck = await pool.query(
+      'SELECT id, auteur_id, titre FROM document WHERE id = $1 AND projet_id = $2',
+      [docId, id]
+    );
+
+    if (docCheck.rows.length === 0)
+      return res.status(404).json({
+        error: 'Document non trouvé dans ce projet'
+      });
+
+    // ✅ Détacher le document du projet (projet_id → NULL)
+    // Le document reste accessible dans l'espace personnel de son auteur.
+    await pool.query(
+      `UPDATE document
+         SET projet_id = NULL,
+             date_modification = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [docId]
+    );
+
+    res.json({
+      message: `Document "${docCheck.rows[0].titre}" retiré du projet. Il reste disponible dans l'espace personnel de son auteur.`,
+      document_id: docCheck.rows[0].id,
+      auteur_id:   docCheck.rows[0].auteur_id
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/projet/:id/participants/:uid
+// ─────────────────────────────────────────────────────────────
+router.delete('/:id/participants/:uid', auth, estAdminProjet, async (req, res) => {
+  const { id, uid } = req.params;
+  const role        = req.user.role?.toUpperCase();
+
+  try {
+    const projet = await pool.query(
+      'SELECT createur_id FROM projet WHERE id = $1', [id]
+    );
+
+    if (!projet.rows.length)
+      return res.status(404).json({ error: 'Projet non trouvé' });
+
+    // ✅ FIX: Protection créateur même pour ADMIN (cohérent avec le frontend)
+    if (projet.rows[0].createur_id === parseInt(uid) && role !== 'ADMIN')
+      return res.status(400).json({ error: 'Le créateur du projet ne peut pas être retiré' });
+    await pool.query(
+      `UPDATE document
+         SET projet_id = NULL,
+             date_modification = CURRENT_TIMESTAMP
+       WHERE projet_id = $1
+         AND auteur_id = $2`,
+      [id, uid]
+    );
+
+    const result = await pool.query(
+      'DELETE FROM participation WHERE projet_id = $1 AND utilisateur_id = $2 RETURNING *',
+      [id, uid]
+    );
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: 'Participant non trouvé dans ce projet' });
+
+    res.json({ message: 'Participant retiré avec succès' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 // ─────────────────────────────────────────────────────────────
 // DELETE /api/projet/:id
 // ─────────────────────────────────────────────────────────────
@@ -378,39 +460,6 @@ router.post('/:id/participants', auth, estAdminProjet, async (req, res) => {
     );
 
     res.status(201).json({ message: `${user.rows[0].nom} ajouté au projet avec succès` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
-// DELETE /api/projet/:id/participants/:uid
-// ─────────────────────────────────────────────────────────────
-router.delete('/:id/participants/:uid', auth, estAdminProjet, async (req, res) => {
-  const { id, uid } = req.params;
-  const role        = req.user.role?.toUpperCase();
-
-  try {
-    const projet = await pool.query(
-      'SELECT createur_id FROM projet WHERE id = $1', [id]
-    );
-
-    if (!projet.rows.length)
-      return res.status(404).json({ error: 'Projet non trouvé' });
-
-    // ✅ FIX: Protection créateur même pour ADMIN (cohérent avec le frontend)
-    if (projet.rows[0].createur_id === parseInt(uid) && role !== 'ADMIN')
-      return res.status(400).json({ error: 'Le créateur du projet ne peut pas être retiré' });
-
-    const result = await pool.query(
-      'DELETE FROM participation WHERE projet_id = $1 AND utilisateur_id = $2 RETURNING *',
-      [id, uid]
-    );
-    if (result.rows.length === 0)
-      return res.status(404).json({ error: 'Participant non trouvé dans ce projet' });
-
-    res.json({ message: 'Participant retiré avec succès' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur serveur' });

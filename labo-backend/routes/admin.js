@@ -226,38 +226,34 @@ router.delete('/utilisateurs/:id', auth, requireAdmin, async (req,res)=>{
 
 // Route Validation Admin
 
-router.put("/utilisateurs/:id/valider",auth,requireAdmin,async(req,res)=>{
+router.put("/utilisateurs/:id/valider", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
 
-try{
+    const user = await pool.query(
+      "SELECT nom, email FROM utilisateur WHERE id = $1",
+      [id]
+    );
 
- const id=req.params.id;
+    if (user.rows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    }
 
- const user=await pool.query(
-   "SELECT nom,email FROM utilisateur WHERE id=$1",
-   [id]
- );
+    // ✅ Activer le compte
+    await pool.query(
+      "UPDATE utilisateur SET actif = TRUE, email_confirme = TRUE WHERE id = $1",
+      [id]
+    );
 
- if(user.rows.length===0){
-   return res.status(404).json({error:"Utilisateur non trouvé"});
- }
+    // ✅ Envoyer l'email de confirmation à l'utilisateur
+    await sendValidationEmail(user.rows[0].email, user.rows[0].nom);
 
- await pool.query(
-   "UPDATE utilisateur SET actif=TRUE WHERE id=$1",
-   [id]
- );
+    res.json({ message: "Compte validé et email envoyé" });
 
- await sendValidationEmail(
-   user.rows[0].email,
-   user.rows[0].nom
- );
-
- res.json({message:"Compte validé et email envoyé"});
-
-}catch(err){
- console.error(err);
- res.status(500).json({error:"Erreur serveur"});
-}
-
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
 });
 
 

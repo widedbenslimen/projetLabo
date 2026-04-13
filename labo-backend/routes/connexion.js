@@ -32,6 +32,11 @@ router.post("/connexion", async (req, res) => {
 
     // 🔒 Vérifier si compte verrouillé
     if (utilisateur.compte_verrouille) {
+      if (!utilisateur.date_verrouillage) {
+        return res.status(403).json({
+          message: "Votre compte est verrouillé. Veuillez contacter l’administrateur."
+        });
+      }
 
       const now = new Date();
       const lockTime = new Date(utilisateur.date_verrouillage);

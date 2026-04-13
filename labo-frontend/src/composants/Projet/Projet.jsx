@@ -7,7 +7,6 @@ import "./Projet.css";
 const API_BASE = "http://localhost:8000/api";
 const getToken = () => localStorage.getItem("token");
 
-// ✅ FIX: Meilleure gestion des erreurs HTTP (401, 403, 404, 409…)
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -64,7 +63,6 @@ function StatutBadge({ statut }) {
    MODAL
 ───────────────────────────────────────────── */
 function PjModal({ title, onClose, children, wide }) {
-  // ✅ FIX: Fermeture avec touche Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -87,9 +85,127 @@ function PjModal({ title, onClose, children, wide }) {
 }
 
 /* ─────────────────────────────────────────────
+   SECTION DOCUMENTS DU PROJET (dans le formulaire de modif)
+   Accessible au créateur pour retirer des documents du projet.
+   Les documents retirés restent dans l'espace personnel de leur auteur.
+───────────────────────────────────────────── */
+function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumentDetached }) {
+  const [documents,  setDocuments]  = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [removing,   setRemoving]   = useState(null); // id du doc en cours de suppression
+  const [confirmDoc, setConfirmDoc] = useState(null); // doc à confirmer avant retrait
+
+  const isCreator = currentUserId === createurId;
+
+  const loadDocuments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch(`/projet/${projetId}`);
+      setDocuments(data.documents || []);
+    } catch (e) {
+      console.error("Erreur chargement documents :", e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [projetId]);
+
+  useEffect(() => { loadDocuments(); }, [loadDocuments]);
+
+  const handleDetach = async (doc) => {
+    setRemoving(doc.id);
+    try {
+      await apiFetch(`/projet/${projetId}/documents/${doc.id}`, { method: "DELETE" });
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+      setConfirmDoc(null);
+      if (onDocumentDetached) onDocumentDetached(doc);
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  if (!isCreator) return null;
+
+  return (
+    <div className="pj-form-section">
+      <div className="pj-form-section-title">
+        Documents du projet
+        <span className="pj-docs-manager-hint">
+          Retirer un document le supprime du projet mais le conserve dans l'espace personnel de son auteur.
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="pj-docs-manager-loading">Chargement des documents…</div>
+      ) : documents.length === 0 ? (
+        <div className="pj-docs-manager-empty">Aucun document dans ce projet.</div>
+      ) : (
+        <div className="pj-docs-manager-list">
+          {documents.map(doc => (
+            <div key={doc.id} className="pj-docs-manager-row">
+              <span className="pj-doc-type-icon" style={{ fontSize: 16 }}>
+                {TYPE_ICONS[doc.type] || "📄"}
+              </span>
+              <div className="pj-docs-manager-info">
+                <span className="pj-docs-manager-titre">{doc.titre}</span>
+                <div className="pj-docs-manager-meta">
+                  <span className="pj-doc-type-label">{doc.type}</span>
+                  {doc.sous_type && <span className="pj-doc-sous-type">{doc.sous_type}</span>}
+                  {doc.auteur_nom && (
+                    <span className="pj-docs-manager-auteur">
+                      — {doc.auteur_nom}
+                      {doc.auteur_id === currentUserId && (
+                        <span className="pj-docs-manager-you"> (vous)</span>
+                      )}
+                    </span>
+                  )}
+                  {!doc.visibilite && (
+                    <span className="pj-docs-manager-private">🔒 Privé</span>
+                  )}
+                </div>
+              </div>
+              <div className="pj-docs-manager-actions">
+                {confirmDoc?.id === doc.id ? (
+                  <div className="pj-docs-manager-confirm">
+                    <span className="pj-docs-manager-confirm-text">Retirer du projet ?</span>
+                    <button
+                      className="pj-docs-manager-btn-confirm"
+                      disabled={removing === doc.id}
+                      onClick={() => handleDetach(doc)}
+                    >
+                      {removing === doc.id ? "…" : "Confirmer"}
+                    </button>
+                    <button
+                      className="pj-docs-manager-btn-cancel"
+                      onClick={() => setConfirmDoc(null)}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="pj-docs-manager-btn-remove"
+                    title="Retirer ce document du projet"
+                    onClick={() => setConfirmDoc(doc)}
+                    disabled={removing === doc.id}
+                  >
+                    ✕ Retirer
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    FORMULAIRE PROJET
 ───────────────────────────────────────────── */
-function ProjetForm({ initial, onSubmit, onCancel, loading }) {
+function ProjetForm({ initial, onSubmit, onCancel, loading, currentUserId }) {
   const [form, setForm] = useState({
     titre: "", description: "", domaine: "", mots_cles: "",
     annee_publication: "", date_debut: "", date_fin: "", statut: "en_cours",
@@ -104,7 +220,6 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // ✅ FIX: Validation date côté frontend (miroir du backend)
   const dateError = form.date_debut && form.date_fin && form.date_fin < form.date_debut
     ? "La date de fin doit être postérieure à la date de début."
     : "";
@@ -115,7 +230,6 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
     if (!val) return;
     setParticipantSearching(true);
     try {
-      // ✅ ALIGNÉ avec GET /api/utilisateur?email=xxx
       const users = await apiFetch(`/utilisateur?email=${encodeURIComponent(val)}`);
       const user  = Array.isArray(users) ? users[0] : users;
       if (!user?.id) { setParticipantError("Aucun utilisateur trouvé."); return; }
@@ -132,12 +246,16 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
     e.preventDefault();
     if (dateError) return;
     const body = Object.fromEntries(
-      Object.entries(form).filter(([, v]) => v !== undefined )
+      Object.entries(form).filter(([, v]) => v !== undefined)
     );
     const creatorId = initial?.createur_id;
     const toSync    = creatorId ? participants.filter(p => p.id !== creatorId) : participants;
     onSubmit(body, toSync);
   };
+
+  const isEditing  = !!initial;
+  const isCreator  = isEditing && currentUserId === initial?.createur_id;
+
   return (
     <form className="pj-form" onSubmit={handleSubmit}>
       <div className="pj-form-section">
@@ -231,6 +349,16 @@ function ProjetForm({ initial, onSubmit, onCancel, loading }) {
           </div>
         )}
       </div>
+
+      {/* ── Section gestion des documents : visible uniquement en modification
+           et uniquement pour le créateur du projet ── */}
+      {isEditing && isCreator && (
+        <ProjetDocumentsManager
+          projetId={initial.id}
+          currentUserId={currentUserId}
+          createurId={initial.createur_id}
+        />
+      )}
 
       <div className="pj-form-actions">
         <button type="button" className="pj-btn-ghost" onClick={onCancel}>Annuler</button>
@@ -459,7 +587,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
   const [error,        setError]        = useState(null);
   const [search,       setSearch]       = useState("");
   const [filterStatut, setFilterStatut] = useState("");
-  const [yearFilter, setYearFilter] = useState("ALL");
+  const [yearFilter,   setYearFilter]   = useState("ALL");
   const [currentPage,  setCurrentPage]  = useState(1);
   const perPage = 10;
 
@@ -474,7 +602,6 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
     setTimeout(() => setToast(null), 3200);
   };
 
-  // ✅ FIX MAJEUR: Utiliser /mes-projets côté serveur au lieu de filtrer côté client
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -497,11 +624,10 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
       || p.createur_nom?.toLowerCase().includes(q)
       || p.participants?.some(x => x.nom?.toLowerCase().includes(q));
     const matchYear = yearFilter === "ALL" || String(p.annee_publication) === String(yearFilter);
-
     return matchQ && (!filterStatut || p.statut === filterStatut) && matchYear;
   });
-  
-const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))].sort((a,b)=>b-a);
+
+  const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))].sort((a, b) => b - a);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
@@ -653,7 +779,6 @@ const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))
       <div className="pj-body-layout">
 
         <div className="pj-main-col">
-          {/* ✅ NEW: Wrapper centré avec marges latérales */}
           <div className="pj-table-wrapper">
 
             {loading ? (
@@ -678,7 +803,6 @@ const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))
               <>
                 <div className="pj-list-header">
                   <span className="pj-col-title">Titre / Domaine</span>
-                  
                   <span className="pj-col-center">Année</span>
                   <span className="pj-col-center">Statut</span>
                   <span className="pj-col-center">Actions</span>
@@ -689,7 +813,6 @@ const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))
                     <div key={p.id} className="pj-list-row" onClick={() => openDetail(p)}>
                       <div className="pj-list-main">
                         <span className="pj-list-title">{p.titre}</span>
-                        
                         {p.domaine && <div className="pj-list-domaine">{p.domaine}</div>}
                         {p.mots_cles && (
                           <div className="pj-list-keywords">
@@ -699,8 +822,6 @@ const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))
                           </div>
                         )}
                       </div>
-
-                      
 
                       <div className="pj-col-center pj-year">
                         {p.annee_publication || "—"}
@@ -763,13 +884,24 @@ const years = [...new Set(projets.map(p => p.annee_publication).filter(Boolean))
 
       {editing === true && (
         <PjModal title="Nouveau projet" onClose={() => setEditing(null)} wide>
-          <ProjetForm onSubmit={handleCreate} onCancel={() => setEditing(null)} loading={formLoading} />
+          <ProjetForm
+            onSubmit={handleCreate}
+            onCancel={() => setEditing(null)}
+            loading={formLoading}
+            currentUserId={user?.id}
+          />
         </PjModal>
       )}
 
       {editing && editing !== true && (
         <PjModal title={`Modifier — ${editing.titre}`} onClose={() => setEditing(null)} wide>
-          <ProjetForm initial={editing} onSubmit={handleUpdate} onCancel={() => setEditing(null)} loading={formLoading} />
+          <ProjetForm
+            initial={editing}
+            onSubmit={handleUpdate}
+            onCancel={() => setEditing(null)}
+            loading={formLoading}
+            currentUserId={user?.id}
+          />
         </PjModal>
       )}
 

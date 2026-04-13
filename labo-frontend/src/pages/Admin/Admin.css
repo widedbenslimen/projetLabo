@@ -880,3 +880,12 @@
   height: 40px;
   object-fit: contain;
 }
+.ad-act-validate {
+  color: #4a7c59;
+  border-color: #4a7c5933;
+}
+.ad-act-validate:hover {
+  background: #4a7c5915;
+  border-color: #4a7c59;
+  color: #4a7c59;
+}

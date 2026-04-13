@@ -1046,3 +1046,156 @@
 ::-webkit-scrollbar-track { background: var(--pj-bg3); }
 ::-webkit-scrollbar-thumb { background: var(--pj-border); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--pj-faint); }
+/* ═══════════════════════════════════════════════════════
+   AJOUT dans Projet.css — Section gestion des documents
+   Coller à la fin du fichier existant Projet.css
+   ═══════════════════════════════════════════════════════ */
+
+/* Hint sous le titre de section */
+.pj-form-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pj-docs-manager-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-tertiary, #888);
+  font-style: italic;
+}
+
+/* États loading / vide */
+.pj-docs-manager-loading,
+.pj-docs-manager-empty {
+  font-size: 13px;
+  color: var(--color-text-tertiary, #999);
+  padding: 10px 0;
+}
+
+/* Liste */
+.pj-docs-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Ligne */
+.pj-docs-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-tertiary, rgba(0,0,0,.08));
+  background: var(--color-background-secondary, #f8f8f8);
+  transition: border-color .15s;
+}
+.pj-docs-manager-row:hover {
+  border-color: var(--color-border-secondary, rgba(0,0,0,.15));
+}
+
+/* Info */
+.pj-docs-manager-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pj-docs-manager-titre {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pj-docs-manager-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pj-docs-manager-auteur {
+  font-size: 11px;
+  color: var(--color-text-secondary, #666);
+}
+.pj-docs-manager-you {
+  font-size: 10px;
+  color: var(--color-text-tertiary, #999);
+}
+.pj-docs-manager-private {
+  font-size: 10px;
+  color: var(--color-text-warning, #b45309);
+  background: var(--color-background-warning, rgba(180,83,9,.08));
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* Actions */
+.pj-docs-manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Bouton Retirer */
+.pj-docs-manager-btn-remove {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-danger, rgba(220,38,38,.3));
+  color: var(--color-text-danger, #dc2626);
+  background: transparent;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.pj-docs-manager-btn-remove:hover:not(:disabled) {
+  background: var(--color-background-danger, rgba(220,38,38,.07));
+}
+.pj-docs-manager-btn-remove:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Zone de confirmation inline */
+.pj-docs-manager-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pj-docs-manager-confirm-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.pj-docs-manager-btn-confirm {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  background: var(--color-text-danger, #dc2626);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.pj-docs-manager-btn-confirm:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.pj-docs-manager-btn-cancel {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-secondary, rgba(0,0,0,.15));
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.pj-docs-manager-btn-cancel:hover {
+  background: var(--color-background-secondary);
+}

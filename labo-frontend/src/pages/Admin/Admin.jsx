@@ -233,6 +233,19 @@ const Admin = () => {
 
   const resetForm = () => setUserForm({ nom: '', email: '', mot_de_passe: '', num_telephone: '', role: 'CHERCHEUR', actif: true });
 
+  const validerUtilisateur = async (id) => {
+  try {
+    setLoading(p => ({ ...p, action: true }));
+    await apiFetch(`/admin/utilisateurs/${id}/valider`, { method: 'PUT' });
+    await fetchUtilisateurs();
+    await fetchStats();
+    showMsg('Compte validé et email envoyé ✓');
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(p => ({ ...p, action: false }));
+  }
+};
   const openEdit = (user) => {
     setEditingUser(user);
     setUserForm({ nom: user.nom, email: user.email, mot_de_passe: '', num_telephone: user.num_telephone || '', role: user.role, actif: user.actif });
@@ -589,6 +602,21 @@ const Admin = () => {
                           </td>
                           <td>
                             <div className="ad-actions">
+                              {/* ✅ Bouton Valider — visible uniquement si compte inactif */}
+                              {!user.actif && (
+                                <button
+                                  className="ad-act-btn ad-act-validate"
+                                  title="Valider le compte"
+                                  onClick={() => validerUtilisateur(user.id)}
+                                  disabled={loading.action}
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                      stroke="currentColor" strokeWidth="2.5"
+                                      strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                  </svg>
+                                </button>
+                              )}
                               {/* Modifier */}
                               <button
                                 className="ad-act-btn ad-act-edit"
