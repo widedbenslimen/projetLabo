@@ -4,6 +4,9 @@ import Projet from "../../composants/Projet/Projet";
 import Rapport from "../../composants/Rapport/Rapport";
 import Document from "../../composants/Document/Document";
 import logo from "../../assets/image.png";
+import LabDocuments from "../../composants/LabDocuments/LabDocuments";
+import ArticlePub from "../../composants/ArticlePub/ArticlePub";
+
 /* ─────────────────────────────────────────────
    CONSTANTS & HELPERS
 ───────────────────────────────────────────── */
@@ -68,6 +71,19 @@ const NAV_ITEMS = [
     statKey: "projets",
   },
   {
+    id: "articles",
+    label: "Articles publiés",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <circle cx="10" cy="13" r="2"/>
+        <path d="M20 17l-2-2-4 4"/>
+      </svg>
+    ),
+    statKey: "articles",
+  },
+  {
     id: "rapport",
     label: "Gérer Rapport",
     icon: (
@@ -78,14 +94,15 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  
 ];
 
 /* ─────────────────────────────────────────────
    STAT CARD
 ───────────────────────────────────────────── */
-function StatCard({ icon, label, value, sub, accent, loading }) {
+function StatCard({ icon, label, value, sub, accent, loading, onClick }) {
   return (
-    <div className="ch-stat-card" style={{ "--sa": accent }}>
+    <div className="ch-stat-card" style={{ "--sa": accent }} onClick={onClick}>
       <div className="ch-stat-card-glow" />
       <div className="ch-stat-header">
         <span className="ch-stat-icon">{icon}</span>
@@ -147,12 +164,14 @@ export default function Chercheur() {
   /* ── State ── */
   const [projets,    setProjets]    = useState([]);
   const [documents,  setDocuments]  = useState([]);
-  const [stats,      setStats]      = useState({ projets: 0, documents: 0, visibilites: 0, });
+  const [stats,      setStats]      = useState({ projets: 0, documents: 0, articlesPublies: 0 });
   const [loading,    setLoading]    = useState(true);
   const [activeTab,  setActiveTab]  = useState("dashboard");
   const [toast,      setToast]      = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
+  
+  
+  //const [docKey, setDocKey] = useState(0);
   /* ── Toast ── */
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -177,24 +196,36 @@ export default function Chercheur() {
 
       /* Documents */
       let userDocs = [];
+      let allDocs = [];
+      let publishedArticles = 0;
       try {
-        const allDocs = await apiFetch("/documents");
-        userDocs = allDocs.filter(d =>
+         allDocs = await apiFetch("/documents");
+         userDocs = allDocs.filter(d =>
           d.auteur_id === userId || d.auteur_id === String(userId)
         );
         setDocuments(userDocs);
+        try {
+          const articlesResponse = await apiFetch("/documents/articles");
+          // Compter les articles publiés par ce chercheur
+          publishedArticles = articlesResponse.filter(
+            a => String(a.chercheur_id) === String(userId)
+          ).length;
+        } catch (e) { 
+          console.error("Articles publiés:", e);
+          publishedArticles = 0;
+        }
       } catch (e) { console.error("Documents:", e); }
+      const visibilites   = userDocs.filter(d => d.visibilite).length;
 
       /* Stats */
-      const visibilites   = userDocs.filter(d => d.visibilite).length;
-      
       setStats({
         projets:    userProjets.length,
         documents:  userDocs.length,
         visibilites,
-        
+        articlesPublies: publishedArticles,
+        labDocs:  allDocs.length,
       });
-    } catch (e) {
+    } catch  {
       showToast("Erreur lors du chargement des données", "error");
     } finally {
       setLoading(false);
@@ -216,7 +247,10 @@ export default function Chercheur() {
     setSidebarOpen(false);
   };
 
-  /* ── Activité récente simulée depuis les données réelles ── */
+  /* ── Récupérer uniquement les articles du chercheur connecté ── */
+  
+
+  /* ── Activité récente depuis les données réelles ── */
   const recentActivity = [
     ...projets.slice(0, 2).map(p => ({
       icon: "📁", text: `Projet « ${p.titre} »`, color: "#f59e0b",
@@ -224,11 +258,14 @@ export default function Chercheur() {
     })),
     ...documents.slice(0, 3).map(d => ({
       icon: d.visibilite ? "🌐" : "🔒",
-      text: `${d.visibilite ? "Public" : "Privé"} : « ${d.titre} »`,
+      text: `${d.visibilite ? "Visible" : "Privé"} : « ${d.titre} »`,
       color: d.visibilite ? "#4a7c59" : "#6366f1",
       date: new Date(d.date_creation).toLocaleDateString("fr-FR"),
     })),
   ].slice(0, 5);
+
+  /* Nav badge counts */
+  const navStats = { documents: stats.documents, projets: stats.projets,articles: stats.articles };
 
   /* ─────────────────────────────────────────────
      RENDER
@@ -259,7 +296,7 @@ export default function Chercheur() {
             <img src={logo} alt="logo" className="ad-logo" />
           </div>
           <div className="ch-brand-text">
-            <span className="ch-brand-title">LabLESOR</span>
+            <span className="ch-brand-title">LESOR</span>
             <span className="ch-brand-sub">Laboratoire Economie et SOciétés Rurales</span>
           </div>
         </div>
@@ -275,8 +312,8 @@ export default function Chercheur() {
             >
               <span className="ch-nav-icon">{item.icon}</span>
               <span className="ch-nav-label">{item.label}</span>
-              {item.statKey && stats[item.statKey] > 0 && (
-                <span className="ch-nav-badge">{stats[item.statKey]}</span>
+              {item.statKey && navStats[item.statKey] > 0 && (
+                <span className="ch-nav-badge">{navStats[item.statKey]}</span>
               )}
             </button>
           ))}
@@ -320,7 +357,7 @@ export default function Chercheur() {
               </svg>
             </button>
             <div className="ch-topbar-breadcrumb">
-              <span className="ch-breadcrumb-home">LabLESOR</span>
+              <span className="ch-breadcrumb-home">LESOR</span>
               <span className="ch-breadcrumb-sep">/</span>
               <span className="ch-breadcrumb-current">
                 {NAV_ITEMS.find(n => n.id === activeTab)?.label || activeTab}
@@ -368,6 +405,7 @@ export default function Chercheur() {
               {/* Stats */}
               <div className="ch-stats-grid">
                 <StatCard
+                  onClick={() => navigate('document')}
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
                   label="Mes documents"
                   value={stats.documents}
@@ -376,6 +414,7 @@ export default function Chercheur() {
                   loading={loading}
                 />
                 <StatCard
+                  onClick={() => navigate('projet')}
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
                   label="Mes projets"
                   value={stats.projets}
@@ -383,15 +422,34 @@ export default function Chercheur() {
                   accent="#f59e0b"
                   loading={loading}
                 />
-                <StatCard
-                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg>}
-                  label="Publications"
-                  value={stats.visibilites}
-                  sub="Articles publiés"
-                  accent="#4a7c59"
+                <StatCard 
+                  onClick={() => navigate('articles')} 
+                  label="Mes Articles publiés"            
+                  value={stats.articlesPublies}
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <line x1="10" y1="9" x2="8" y2="9"/>
+                  </svg>}
+                  accent="#6b4c8a" 
                   loading={loading}
                 />
-                
+                <StatCard
+                  onClick={() => navigate('labDocs')}
+                  label="Documents du Laboratoire"
+                  value={stats.labDocs}
+                  icon={
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                  }
+                  sub="Tous documents du laboratoire"
+                  accent="#0d9488"
+                  loading={loading}
+                />
               </div>
 
               {/* Bottom grid */}
@@ -458,7 +516,7 @@ export default function Chercheur() {
                           key={d.id}
                           icon={d.type === "ARTICLE" ? "📰" : d.type === "IMAGE" ? "🖼️" : d.type === "VIDEO" ? "🎬" : "📄"}
                           title={d.titre}
-                          meta={`${d.type}${d.visibilite ? ". 🌐 Public" : ". 🔒 Privé"} · ${new Date(d.date_creation).toLocaleDateString("fr-FR")}`}
+                          meta={`${d.type}${d.visibilite ? ". 🌐 Visible" : ". 🔒 Privé"} · ${new Date(d.date_creation).toLocaleDateString("fr-FR")}`}
                           accent="#6366f1"
                           onClick={() => navigate("document")}
                         />
@@ -494,6 +552,7 @@ export default function Chercheur() {
               </div>
             </div>
           )}
+
           {/* ═══════════ DOCUMENTS ═══════════ */}
           {activeTab === "document" && (
             <div className="ch-tab-pane">
@@ -508,10 +567,24 @@ export default function Chercheur() {
             </div>
           )}
 
+          {/* ═══════════ MES ARTICLES ═══════════ */}
+          {activeTab === 'articles' && (
+            <div className="ch-tab-pane">
+              <ArticlePub
+                userRole={user.role || "CHERCHEUR"}
+                userId={user.id || user.userId}
+              />
+            </div>
+          )}
           {/* ═══════════ RAPPORT ═══════════ */}
           {activeTab === "rapport" && (
             <div className="ch-tab-pane">
               <Rapport user={user} />
+            </div>
+          )}
+          {activeTab === "labDocs" && (
+            <div className="ch-tab-pane">
+              <LabDocuments userRole={user.role || "CHERCHEUR"} />
             </div>
           )}
 

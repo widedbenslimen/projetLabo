@@ -61,8 +61,6 @@ app.use("/api/utilisateur", utilisateurRoutes);
 const rapportRouter = require("./routes/rapport");
 app.use("/api/rapport", rapportRouter);
 
-const aiRouter = require("./routes/Ai");
-app.use("/api/ai", aiRouter);
 
 // 404
 app.use((req, res) => {

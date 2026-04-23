@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import "./Document.css";
-import IA from "../../composants/IA/IA";
+
 
 /* ═══════════════════════════════════════════════════════════
    CONSTANTS
@@ -63,7 +63,7 @@ function TypeBadge({ type }) {
 }
 
 function VisibilityChip({ visibilite }) {
-  return <span className={`doc-vis-chip ${visibilite ? "public" : "private"}`}>{visibilite ? "🌐 Public" : "🔒 Privé"}</span>;
+  return <span className={`doc-vis-chip ${visibilite ? "visible" : "private"}`}>{visibilite ? "🌐 Visible" : "🔒 Privé"}</span>;
 }
 
 function DocModal({ title, onClose, children }) {
@@ -97,7 +97,7 @@ function EmptyState({ type, onAdd, hasFilters, onClear, canCreate }) {
 /* ═══════════════════════════════════════════════════════════
    DOC TABLE
 ═══════════════════════════════════════════════════════════ */
-function DocTable({ docs, isArticle, canEdit, onView, onDelete }) {
+function DocTable({ docs, isArticle, onView, onEdit, onDelete, currentUserId, userRole }) {
   return (
     <div className="doc-table-wrap">
       <table className="doc-table">
@@ -128,21 +128,44 @@ function DocTable({ docs, isArticle, canEdit, onView, onDelete }) {
               <td className="doc-cell-sm">{doc.auteur_nom || <span className="doc-faint">—</span>}</td>
               <td className="doc-cell-date">{new Date(doc.date_creation).toLocaleDateString("fr-FR")}</td>
               <td className="doc-cell-actions" onClick={e => e.stopPropagation()}>
-                <button className="doc-act-btn" title="Voir" onClick={() => onView(doc)}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-                {canEdit && (
-                  <button className="doc-act-btn doc-act-del" title="Supprimer" onClick={() => onDelete(doc.id)}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                      <path d="M10 11v6M14 11v6"/>
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                    </svg>
-                  </button>
-                )}
+                {/* Modifier — visible toujours, désactivé si pas auteur/admin */}
+                {(() => {
+                  const isAdmin  = userRole === "ADMIN";
+                  const isAuthor = String(doc.auteur_id) === String(currentUserId);
+                  const isProjCreator = doc.projet_createur_id != null &&
+                                        String(doc.projet_createur_id) === String(currentUserId);
+                  const allowed  = isAdmin || isAuthor || isProjCreator;
+                  return (
+                    <>
+                      <button
+                        className={`doc-act-btn${!allowed ? " doc-act-btn--disabled" : ""}`}
+                        title={allowed ? "Modifier" : "Vous ne pouvez modifier que vos propres documents"}
+                        disabled={!allowed}
+                        onClick={allowed ? () => onEdit(doc) : undefined}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      <button
+                        className={`doc-act-btn doc-act-del${!allowed ? " doc-act-btn--disabled" : ""}`}
+                        title={allowed ? "Supprimer" : "Vous ne pouvez supprimer que vos propres documents"}
+                        disabled={!allowed}
+                        onClick={allowed ? () => onDelete(doc.id) : undefined}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                      </button>
+                    </>
+                  );
+                })()}
               </td>
             </tr>
           ))}
@@ -171,11 +194,22 @@ function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading,
     doi: "", resume: "", citation_APA: "",
     sous_type: "JOURNAL", journal: "", maison_edition: "",
     resolution: "", format: "", visibilite: false,
+    date_creation: "",
     ...(initial || {}),
   });
   const [file,    setFile]    = useState(null);
   const [projets, setProjets] = useState([]);
+  // ← Formater la date pour l'affichage
+  useEffect(() => { 
+  if (initial?.date_creation) {
+    const formattedDate = new Date(initial.date_creation).toISOString().split('T')[0];
 
+    setForm(prev => {
+      if (prev.date_creation) return prev;
+      return { ...prev, date_creation: formattedDate };
+    });
+  }
+}, [initial]);
   useEffect(() => {
     const endpoint = role === "ADMIN" ? "/projet" : "/projet/mes-projets";
     apiFetch(endpoint).then(setProjets).catch(() => setProjets([]));
@@ -193,6 +227,10 @@ function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading,
     fd.append("projet_id",   form.projet_id || "");
     fd.append("visibilite",  form.visibilite ? "true" : "false");
     fd.append("lien",        form.lien || "");
+     // ← AJOUTER LA DATE DE CRÉATION
+    if (form.date_creation && form.date_creation.trim() !== "") {
+      fd.append("date_creation", form.date_creation);
+    }
     if (resolvedType === "ARTICLE") {
       fd.append("sous_type",      form.sous_type || "");
       fd.append("doi",            form.doi || "");
@@ -235,6 +273,19 @@ function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading,
           <label>Titre *</label>
           <input required value={form.titre} onChange={e => set("titre", e.target.value)} placeholder="Titre du document" />
         </div>
+        {/* ← NOUVEAU CHAMP DATE DE CRÉATION */}
+        <div className="doc-field">
+          <label>Date de création</label>
+          <input 
+            type="date" 
+            value={form.date_creation || ""} 
+            onChange={e => set("date_creation", e.target.value)}
+            placeholder="YYYY-MM-DD"
+          />
+          <small className="doc-field-hint">
+            Laissez vide pour utiliser la date d'aujourd'hui
+          </small>
+        </div>
 
         <div className="doc-field doc-field-span">
           <label>Projet associé</label>
@@ -264,7 +315,7 @@ function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading,
           >
             <span className="doc-vis-track"><span className="doc-vis-thumb" /></span>
             <div className="doc-vis-text">
-              <span className="doc-vis-state">{form.visibilite ? "🌐 Public" : "🔒 Privé"}</span>
+              <span className="doc-vis-state">{form.visibilite ? "🌐 Visible" : "🔒 Privé"}</span>
               <small className="doc-field-hint">
                 {form.visibilite ? "Visible par tous les utilisateurs connectés" : "Visible uniquement par vous et l'administrateur"}
               </small>
@@ -347,9 +398,13 @@ function ClassicDocumentForm({ initial, lockedType, onSubmit, onCancel, loading,
 /* ═══════════════════════════════════════════════════════════
    PANNEAU DÉTAIL
 ═══════════════════════════════════════════════════════════ */
-function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEdit, canToggleVis }) {
+function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility,onPublish, currentUserId, userRole, canEdit, canToggleVis }) {
   const m = TYPE_META[doc.type] || { icon: "📄", color: "#888" };
   const isArticle = doc.type === "ARTICLE";
+  const isAdmin   = userRole === "ADMIN";
+  const isAuthor  = String(doc.auteur_id) === String(currentUserId);
+  const canPublish = isArticle && (isAdmin || isAuthor);
+
   const getFileUrl  = lien => lien ? `http://localhost:8000/${lien.replace(/\\/g, "/")}` : null;
   const getExt      = lien => lien ? lien.split(".").pop().toLowerCase() : "";
   const getBasename = lien => lien ? lien.split(/[\\/]/).pop() : "";
@@ -427,10 +482,20 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
         </div>
         <div className="doc-panel-footer">
           {canEdit && <button className="doc-btn-ghost" onClick={() => onEdit(doc)}>✎ Modifier</button>}
+          {/* ← BOUTON PUBLIER */}
+          {canPublish && (
+            <button
+              className="doc-btn-publish"
+              onClick={() => onPublish(doc.id)}
+              title="Publier cet article dans la table publication"
+            >
+              🚀 Publier
+            </button>
+          )}
           {canToggleVis && (
-            <button className={`doc-btn-vis ${doc.visibilite ? "private" : "public"}`}
+            <button className={`doc-btn-vis ${doc.visibilite ? "private" : "visible"}`}
               onClick={() => onToggleVisibility(doc.id, !doc.visibilite)}>
-              {doc.visibilite ? "🔒 Rendre privé" : "🌐 Rendre public"}
+              {doc.visibilite ? "🔒 Rendre privé" : "🌐 Rendre visible"}
             </button>
           )}
           {canEdit && <button className="doc-btn-danger" onClick={() => onDelete(doc.id)}>🗑️ Supprimer</button>}
@@ -443,7 +508,7 @@ function DetailPanel({ doc, onClose, onDelete, onEdit, onToggleVisibility, canEd
 /* ═══════════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
-export default function Document() {
+export default function Document({ role: propRole, initialFilterUserId = null }) {
   const [docs,        setDocs]        = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
@@ -466,23 +531,80 @@ export default function Document() {
   const [globalQ,      setGlobalQ]      = useState("");
   const perPage = 10;
   const [expandedView, setExpandedView] = useState(false);
+  const [filterUserId, setFilterUserId] = useState(initialFilterUserId);
 
-  const currentUser   = getUserFromToken();
+  const currentUser = propRole ? { role: propRole, id: getUserFromToken()?.id } : getUserFromToken();
   const currentUserId = currentUser?.id;
-  const caps          = getRoleCapabilities(currentUser?.role);
+  const caps = getRoleCapabilities(currentUser?.role);
 
+  useEffect(() => {
+    if (filterUserId) return;
+    const userId = sessionStorage.getItem('filterUserId');
+    //const userName = sessionStorage.getItem('filterUserName');
+    
+    if (userId) {
+      setFilterUserId(parseInt(userId));
+      //showToast(`Affichage des documents de ${userName || 'cet utilisateur'}`, 'info');
+      sessionStorage.removeItem('filterUserId');
+      sessionStorage.removeItem('filterUserName');
+    }
+  }, []);
   const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3200); };
 
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setDocs(await apiFetch("/documents")); }
+    try { 
+       if (filterUserId && caps.isAdmin) {
+        setDocs(await apiFetch(`/documents/user/${filterUserId}`));
+      } else {
+        setDocs(await apiFetch("/documents"));
+      }
+    }
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, []);
+  }, [filterUserId, caps.isAdmin]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  // ── Lecture filtre depuis sessionStorage (appelé depuis Admin) ──
+useEffect(() => {
+  const typeFilter = sessionStorage.getItem('docTypeFilter');
+  const openId     = sessionStorage.getItem('docOpenId');
 
-  const visibleDocs = caps.filterOwn ? docs.filter(d => d.auteur_id === currentUserId) : docs;
+  if (typeFilter) {
+    setActiveType(typeFilter);
+    setExpandedView(true);
+    sessionStorage.removeItem('docTypeFilter');
+  }
+
+  if (openId) {
+    // Attendre que les docs soient chargés puis ouvrir le détail
+    const tryOpen = setInterval(() => {
+      setDocs(current => {
+        const found = current.find(d => String(d.id) === String(openId));
+        if (found) {
+          clearInterval(tryOpen);
+          apiFetch(`/documents/${openId}`)
+            .then(setSelected)
+            .catch(() => {});
+          sessionStorage.removeItem('docOpenId');
+        }
+        return current;
+      });
+    }, 200);
+    // Timeout sécurité
+    setTimeout(() => clearInterval(tryOpen), 5000);
+  }
+}, []);
+
+   const visibleDocs = useMemo(() => {
+  let result = caps.filterOwn ? docs.filter(d => d.auteur_id === currentUserId) : [...docs];
+  
+  if (filterUserId && caps.isAdmin) {
+    result = result.filter(d => d.auteur_id === filterUserId);
+  }
+  
+  return result;
+}, [docs, caps.filterOwn, caps.isAdmin, currentUserId, filterUserId]);
   const countByType = DOCUMENT_TYPES.reduce((acc, t) => { acc[t] = visibleDocs.filter(d => d.type === t).length; return acc; }, {});
   const typeDocs    = activeType ? visibleDocs.filter(d => d.type === activeType) : [];
   const years       = [...new Set(typeDocs.map(d => new Date(d.date_creation).getFullYear()))].sort((a, b) => b - a);
@@ -498,7 +620,7 @@ export default function Document() {
   const filtered = typeDocs.filter(d => {
     const matchS = !search    || matchSearch(d, search);
     const matchY = yearFilter === "ALL" || new Date(d.date_creation).getFullYear().toString() === yearFilter;
-    const matchV = visFilter  === "ALL" || (visFilter === "PUBLIC" ? d.visibilite : !d.visibilite);
+    const matchV = visFilter  === "ALL" || (visFilter === "VISIBLE" ? d.visibilite : !d.visibilite);
     return matchS && matchY && matchV;
   });
 
@@ -531,7 +653,7 @@ export default function Document() {
   const handleToggleVisibility = async (id, newVal) => {
     try {
       await apiFetch(`/documents/${id}/visibilite`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visibilite: newVal }) });
-      showToast(newVal ? "Document rendu public 🌐" : "Document rendu privé 🔒");
+      showToast(newVal ? "Document rendu visible 🌐" : "Document rendu privé 🔒");
       setSelected(null); loadData();
     } catch (e) { showToast(e.message, "error"); }
   };
@@ -552,11 +674,38 @@ export default function Document() {
     if (editing.__mode === "edit") return `Modifier — ${editing.titre}`;
     return "";
   };
+  const handlePublish = async (docId) => {
+  try {
+    await apiFetch(`/documents/${docId}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    showToast("Article publié avec succès ✓");
+    setSelected(null);
+    loadData();
+  } catch (e) {
+    showToast(e.message, "error");
+  }
+};
 
   return (
     <div className="doc-root">
       {toast && <div className={`doc-toast doc-toast-${toast.type}`}>{toast.type === "success" ? "✓" : "⚠"} {toast.msg}</div>}
-
+       {/* ✅ AJOUTER L'INDICATEUR DE FILTRE ICI */}
+      {filterUserId && caps.isAdmin && (
+        <div className="doc-active-filter">
+          <span className="doc-filter-badge">
+            <svg className="ad-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  </svg>
+             Filtré par utilisateur
+            <button onClick={() => { setFilterUserId(null); loadData(); showToast('Filtre supprimé', 'info'); }}>
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
       {/* ══ HEADER ══ */}
       <div className="doc-header">
         <div className="doc-header-left">
@@ -564,7 +713,7 @@ export default function Document() {
           {!loading && (
             <div className="doc-header-stats">
               <span className="doc-stat-pill"><strong>{statsTotal}</strong> total</span>
-              <span className="doc-stat-pill pub"><strong>{statsPublic}</strong> publics</span>
+              <span className="doc-stat-pill pub"><strong>{statsPublic}</strong> visibles</span>
               <span className="doc-stat-pill priv"><strong>{statsPrivate}</strong> privés</span>
             </div>
           )}
@@ -580,12 +729,7 @@ export default function Document() {
             />
             {globalQ && <button onClick={() => setGlobalQ("")}>✕</button>}
           </div>
-          {caps.canCreate && (
-            /* Ouvre la modal IA */
-            <button className="doc-btn-primary doc-btn-ai" onClick={() => setEditing({ __mode: "ai" })}>
-              <span className="doc-btn-ai-sparkle">✦</span> + Nouveau
-            </button>
-          )}
+          
         </div>
       </div>
 
@@ -600,7 +744,16 @@ export default function Document() {
                 <p className="doc-empty-title">Aucun résultat</p>
               </div>
             ) : (
-              <DocTable docs={globalResults} isArticle={false} canEdit={caps.canEdit} onView={openDetail} onDelete={id => setConfirm(id)} />
+              <DocTable
+                docs={globalResults}
+                isArticle={false}
+                canEdit={caps.canEdit}
+                onView={openDetail}
+                onEdit={doc => { setEditing({ __mode: "edit", ...doc }); }}
+                onDelete={id => setConfirm(id)}
+                currentUserId={currentUserId}
+                userRole={currentUser?.role}
+              />
             )}
           </div>
         ) : (
@@ -648,7 +801,7 @@ export default function Document() {
                   <select className="doc-filter-sel" value={visFilter}
                     onChange={e => { setVisFilter(e.target.value); setPage(1); }} style={{ backgroundColor: "#fefcfc" }}>
                     <option value="ALL">Toutes visibilités</option>
-                    <option value="PUBLIC">🌐 Public</option>
+                    <option value="VISIBLE">🌐 Visible</option>
                     <option value="PRIVATE">🔒 Privé</option>
                   </select>
                   <span className="doc-filter-count">{filtered.length} document{filtered.length !== 1 ? "s" : ""}</span>
@@ -667,8 +820,16 @@ export default function Document() {
                     onClear={clearFilters} canCreate={caps.canCreate} />
                 ) : (
                   <>
-                    <DocTable docs={paginated} isArticle={isArticle} canEdit={caps.canEdit}
-                      onView={openDetail} onDelete={id => setConfirm(id)} />
+                    <DocTable
+                      docs={paginated}
+                      isArticle={isArticle}
+                      canEdit={caps.canEdit}
+                      onView={openDetail}
+                      onEdit={doc => { setEditing({ __mode: "edit", ...doc }); }}
+                      onDelete={id => setConfirm(id)}
+                      currentUserId={currentUserId}
+                      userRole={currentUser?.role}
+                    />
                     {totalPages > 1 && (
                       <div className="doc-pagination">
                         <span className="doc-page-info">Page {page} / {totalPages}</span>
@@ -699,16 +860,18 @@ export default function Document() {
           onDelete={id => { setConfirm(id); setSelected(null); }}
           onEdit={doc => { setEditing({ __mode: "edit", ...doc }); setSelected(null); }}
           onToggleVisibility={handleToggleVisibility}
-          canEdit={caps.canEdit} canToggleVis={caps.canToggleVis} />
-      )}
-
-      {/* ══ MODAL IA — "+ Nouveau" ══ */}
-      {editing?.__mode === "ai" && (
-        <IA
-          role={currentUser?.role}
-          onSubmit={handleCreate}
-          onClose={() => setEditing(null)}
-          loading={formLoading}
+          onPublish={handlePublish}
+          currentUserId={currentUserId}
+          userRole={currentUser?.role}
+          canEdit={
+            caps.isAdmin ||
+            selected?.auteur_id === currentUserId ||
+            (selected?.projet_createur_id != null && selected?.projet_createur_id === currentUserId)
+          }
+          canToggleVis={
+            (caps.isAdmin || selected?.auteur_id === currentUserId) &&
+            (selected?.type !== "ARTICLE" || selected?.publie === true)
+          }
         />
       )}
 

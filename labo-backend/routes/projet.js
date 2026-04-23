@@ -144,7 +144,7 @@ router.get('/:id', auth, async (req, res) => {
 
     if (projet.rows.length === 0)
       return res.status(404).json({ error: 'Projet non trouvé' });
-
+    // ✅ Fetch participants FIRST so we can use them for access check
     const participants = await pool.query(`
       SELECT u.id, u.nom, u.email, u.role, pa.date_participation
       FROM participation pa
@@ -153,23 +153,31 @@ router.get('/:id', auth, async (req, res) => {
       ORDER BY (u.id = $2) DESC, pa.date_participation ASC
     `, [id, projet.rows[0].createur_id]);
 
-    let docQuery  = `
-      SELECT d.id, d.titre, d.type, d.sous_type, d.description,
-             d.mots_cles, d.lien, d.visibilite, d.date_creation,
-             u.id AS auteur_id, u.nom AS auteur_nom
-      FROM document d
-      LEFT JOIN utilisateur u ON u.id = d.auteur_id
-      WHERE d.projet_id = $1
-    `;
-    const docParams = [id];
+    // Determine if current user is a participant (or creator/admin)
+const isParticipant = role === 'ADMIN' || 
+  projet.rows[0].createur_id === userId ||
+  participants.rows.some(p => p.id === userId);
 
-    if (role === 'INVITE') {
-      docQuery += ' AND d.visibilite = true';
-    } else if (role !== 'ADMIN') {
-      docQuery += ' AND (d.auteur_id = $2 OR d.visibilite = true)';
-      docParams.push(userId);
-    }
-    docQuery += ' ORDER BY d.date_creation DESC';
+let docQuery = `
+  SELECT d.id, d.titre, d.type, d.sous_type, d.description,
+         d.mots_cles, d.lien, d.visibilite, d.date_creation,
+         u.id AS auteur_id, u.nom AS auteur_nom
+  FROM document d
+  LEFT JOIN utilisateur u ON u.id = d.auteur_id
+  WHERE d.projet_id = $1
+`;
+const docParams = [id];
+
+if (role === 'INVITE') {
+  docQuery += ' AND d.visibilite = true';
+} else if (isParticipant) {
+  // Participants (including creator) see ALL project docs
+} else {
+  // Non-participant logged-in user: own docs + public docs
+  docQuery += ' AND (d.auteur_id = $2 OR d.visibilite = true)';
+  docParams.push(userId);
+}
+docQuery += ' ORDER BY d.date_creation DESC';
 
     const documents = await pool.query(docQuery, docParams);
 
@@ -328,13 +336,18 @@ router.patch('/:id/statut', auth, estAdminProjet, async (req, res) => {
 // sans le supprimer globalement.
 // Accès : créateur du projet ou ADMIN
 // ─────────────────────────────────────────────────────────────
-router.delete('/:id/documents/:docId', auth, estAdminProjet, async (req, res) => {
+router.delete('/:id/documents/:docId', auth, async (req, res) => {
   const { id, docId } = req.params;
+  const userId = req.user.id;
+  const role = req.user.role?.toUpperCase();
 
   try {
     // Vérifier que le document appartient bien à ce projet
     const docCheck = await pool.query(
-      'SELECT id, auteur_id, titre FROM document WHERE id = $1 AND projet_id = $2',
+      `SELECT d.id, d.auteur_id, d.titre, p.createur_id 
+       FROM document d
+       JOIN projet p ON p.id = d.projet_id
+       WHERE d.id = $1 AND d.projet_id = $2`,
       [docId, id]
     );
 
@@ -342,6 +355,17 @@ router.delete('/:id/documents/:docId', auth, estAdminProjet, async (req, res) =>
       return res.status(404).json({
         error: 'Document non trouvé dans ce projet'
       });
+      const document = docCheck.rows[0];
+      const isAdmin = role === 'ADMIN';
+      const isCreator = document.createur_id === userId;
+      const isAuthor = document.auteur_id === userId;
+
+      // ✅ Permettre l'accès si : admin, créateur, ou auteur du document
+      if (!isAdmin && !isCreator && !isAuthor) {
+        return res.status(403).json({ 
+          error: 'Accès refusé. Seul le créateur, l\'admin ou l\'auteur du document peut le retirer du projet.' 
+        });
+      }
 
     // ✅ Détacher le document du projet (projet_id → NULL)
     // Le document reste accessible dans l'espace personnel de son auteur.

@@ -1199,3 +1199,18 @@
 .pj-docs-manager-btn-cancel:hover {
   background: var(--color-background-secondary);
 }
+/* ── Boutons d'action désactivés ── */
+.pj-act-btn--disabled,
+.doc-act-btn--disabled {
+  opacity: 0.38;
+  cursor: not-allowed !important;
+  pointer-events: none;   /* retire le hover coloré */
+  filter: grayscale(0.4);
+}
+
+/* Boutons de footer désactivés */
+.pj-btn--disabled {
+  opacity: 0.38;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}

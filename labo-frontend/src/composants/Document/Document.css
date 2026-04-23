@@ -1446,3 +1446,130 @@
   .doc-modal-overlay { padding: 8px; align-items: flex-end; }
   .doc-modal-box   { max-height: 95vh; border-radius: var(--doc-r) var(--doc-r) 0 0; }
 }
+/* Style pour le bouton Voir */
+.ad-act-view {
+  background: #4a7c59 !important;
+  color: white !important;
+}
+
+.ad-act-view:hover {
+  background: #3a6347 !important;
+}
+
+/* Style pour l'indicateur de filtre actif dans Document */
+.doc-active-filter {
+  margin-bottom: 1rem;
+}
+
+.doc-filter-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: 0.8rem 1.8rem;
+  background: #d6f3e4;
+  border-radius: 30px;
+  font-size: 0.9rem;
+  color: #88898a;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.doc-filter-badge button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 1.1rem;
+  padding: 0 0.3rem;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+.doc-filter-badge button:hover {
+  color: #b91c1c;
+}
+/* ── Boutons d'action désactivés ── */
+.pj-act-btn--disabled,
+.doc-act-btn--disabled {
+  opacity: 0.38;
+  cursor: not-allowed !important;
+  pointer-events: none;   /* retire le hover coloré */
+  filter: grayscale(0.4);
+}
+
+/* Boutons de footer désactivés */
+.pj-btn--disabled {
+  opacity: 0.38;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+/* Styles pour le champ date */
+.doc-field input[type="date"] {
+  font-family: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  background-color: #fefcfc;
+}
+
+.doc-field input[type="date"]:focus {
+  outline: none;
+  border-color: var(--tc, #6366f1);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.doc-field-hint {
+  display: block;
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+.doc-field-locked {
+  background-color: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+/* Badge "Publié" — article déjà publié */
+.doc-btn-published {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #6ee7b740;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+
+/* Bouton Publier — article non publié */
+.doc-btn-publish {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #6366f140;
+  background: #6366f110;
+  color: #6366f1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.doc-btn-publish:hover {
+  background: #6366f120;
+  border-color: #6366f1;
+}
+
+/* Toggle visibilité désactivé (article non publié) */
+.doc-btn-vis:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -3,6 +3,7 @@ import './Admin.css';
 import Document from "../../composants/Document/Document";
 import Projet from "../../composants/Projet/Projet";
 import Rapport from "../../composants/Rapport/Rapport";
+import ArticlePub from "../../composants/ArticlePub/ArticlePub";
 import logo from "../../assets/image.png";
 /* ─────────────────────────────────────────────
    CONSTANTS & HELPERS
@@ -66,6 +67,18 @@ const NAV_ITEMS = [
     ),
   },
   {
+  id: "articles",
+  label: "Articles publiés",
+  icon: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <circle cx="12" cy="14" r="3"/>
+      <path d="M12 11v-1"/>
+    </svg>
+  ),
+},
+  {
     id: "rapport",
     label: "Gérer Rapport",
     icon: (
@@ -93,19 +106,24 @@ const roleConfig = {
 /* ─────────────────────────────────────────────
    STAT CARD
 ───────────────────────────────────────────── */
-function StatCard({ icon, label, value, sub, accent, loading }) {
+function StatCard({ icon, label, value, sub, accent, loading , onClick}) {
   return (
-    <div className="ad-stat-card" style={{ '--sa': accent }}>
-      <div className="ad-stat-glow" />
-      <div className="ad-stat-header">
-        <span className="ad-stat-icon">{icon}</span>
-        <span className="ad-stat-label">{label}</span>
+     <div
+        className={`ad-stat-card ${onClick ? 'ad-stat-card-clickable' : ''}`}
+        style={{ '--sa': accent }}
+        onClick={onClick}
+      >
+        <div className="ad-stat-glow" />
+        <div className="ad-stat-header">
+          <span className="ad-stat-icon">{icon}</span>
+          <span className="ad-stat-label">{label}</span>
+        </div>
+        <div className="ad-stat-value">
+          {loading ? <span className="ad-stat-skeleton" /> : (value ?? '—')}
+        </div>
+        {sub && <div className="ad-stat-sub">{sub}</div>}
       </div>
-      <div className="ad-stat-value">
-        {loading ? <span className="ad-stat-skeleton" /> : (value ?? '—')}
-      </div>
-      {sub && <div className="ad-stat-sub">{sub}</div>}
-    </div>
+    
   );
 }
 
@@ -114,15 +132,25 @@ function StatCard({ icon, label, value, sub, accent, loading }) {
 ───────────────────────────────────────────── */
 const Admin = () => {
   const adminName = getAdminName();
+  // ✅ Récupération de l'utilisateur depuis localStorage
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  })();
 
-  const [stats, setStats]         = useState({ utilisateurs_actifs: 0, documents: 0, projets: 0, publications: 0, recent_users: [] });
+  const [stats, setStats] = useState({ utilisateurs_actifs: 0, documents: 0, projets: 0, articlesPublies: 0, recent_users: [] });
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [loading, setLoading]     = useState({ stats: true, users: true, action: false });
   const [error, setError]         = useState(null);
   const [success, setSuccess]     = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
 
+  
   /* User modal */
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser,   setEditingUser]   = useState(null);
@@ -151,9 +179,36 @@ const Admin = () => {
   const fetchStats = async () => {
     try {
       setLoading(p => ({ ...p, stats: true }));
-      setStats(await apiFetch('/admin/stats'));
-    } catch (err) { setError(err.message); }
-    finally { setLoading(p => ({ ...p, stats: false })); }
+      
+      // 1. Récupérer les statistiques de base depuis /admin/stats
+      const baseStats = await apiFetch('/admin/stats');
+      
+      // 2. Récupérer le nombre réel d'articles publiés
+      let articlesPubliesCount = 0;
+      try {
+        const articlesResponse = await apiFetch('/documents/articles');
+        articlesPubliesCount = articlesResponse.length;
+      } catch (err) {
+        console.error("Erreur lors de la récupération des articles publiés:", err);
+        // Fallback : utiliser la valeur existante si disponible
+        articlesPubliesCount = baseStats.articlesPublies || baseStats.articles || 0;
+      }
+      
+      // 3. Fusionner les résultats
+      setStats({
+        utilisateurs_actifs: baseStats.utilisateurs_actifs || 0,
+        documents: baseStats.documents || 0,
+        projets: baseStats.projets || 0,
+        articles: baseStats.articles || 0,
+        articlesPublies: articlesPubliesCount,  // ← Valeur corrigée
+        recent_users: baseStats.recent_users || []
+      });
+      
+    } catch (err) { 
+      setError(err.message); 
+    } finally { 
+      setLoading(p => ({ ...p, stats: false })); 
+    }
   };
 
   const fetchUtilisateurs = async () => {
@@ -222,7 +277,18 @@ const Admin = () => {
     } catch (err) { setError(err.message); }
     finally { setLoading(p => ({ ...p, action: false })); }
   };
-
+  // Ajoutez cette fonction après toggleLock ou avant handleSubmit
+const viewUserDocuments = (user) => {
+  // Stocker l'ID de l'utilisateur à filtrer dans sessionStorage
+  sessionStorage.setItem('filterUserId', user.id);
+  sessionStorage.setItem('filterUserName', user.nom);
+  // Naviguer vers l'onglet documents
+  setActiveTab('documents');
+  // Fermer la sidebar si ouverte
+  setSidebarOpen(false);
+  // Afficher un message de confirmation
+  showMsg(`Affichage des documents de ${user.nom}`);
+};
   const handleSubmit = (e) => {
     e.preventDefault();
     if (userForm.num_telephone && !/^[0-9]{8}$/.test(userForm.num_telephone)) {
@@ -258,7 +324,11 @@ const Admin = () => {
     window.location.href = '/Connexion';
   };
 
-  const navigate = (tab) => { setActiveTab(tab); setSidebarOpen(false); };
+  const navigate = (tab) => { 
+    setActiveTab(tab); 
+    setSidebarOpen(false);
+    
+  };
 
   /* ── Filters ── */
   const filtered = utilisateurs.filter(u => {
@@ -275,8 +345,8 @@ const Admin = () => {
   const currentUsers = filtered.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
 
   /* Nav badge counts */
-  const navStats = { users: utilisateurs.length, documents: stats.documents, projets: stats.projets };
-
+  const navStats = { users: utilisateurs.length, documents: stats.documents, projets: stats.projets, articles: stats.articles };
+  
   /* ─────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────── */
@@ -313,7 +383,7 @@ const Admin = () => {
           <img src={logo} alt="logo" className="ad-logo" />
         </div>
           <div className="ad-brand-text">
-            <span className="ad-brand-title">LabLESOR</span>
+            <span className="ad-brand-title">LESOR</span>
             <span className="ad-brand-sub">Laboratoire Economie et SOciétés Rurales</span>
           </div>
         </div>
@@ -372,7 +442,7 @@ const Admin = () => {
               </svg>
             </button>
             <div className="ad-topbar-breadcrumb">
-              <span className="ad-breadcrumb-home">LabLESOR</span>
+              <span className="ad-breadcrumb-home">LESOR</span>
               <span className="ad-breadcrumb-sep">/</span>
               <span className="ad-breadcrumb-current">
                 {NAV_ITEMS.find(n => n.id === activeTab)?.label || activeTab}
@@ -419,24 +489,32 @@ const Admin = () => {
               {/* Stats */}
               <div className="ad-stats-grid">
                 <StatCard
+                  onClick={() => navigate('users')}
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}
                   label="Utilisateurs actifs" value={stats.utilisateurs_actifs}
                   sub={`+${stats.recent_users?.length || 0} récents`}
                   accent="#2e6b8a" loading={loading.stats}
                 />
                 <StatCard
+                  onClick={() => navigate('documents')}
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
                   label="Documents" value={stats.documents}
                   accent="#4a7c59" loading={loading.stats}
                 />
                 <StatCard
+                  onClick={() => navigate('projet')}
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
                   label="Projets" value={stats.projets}
                   accent="#d4691e" loading={loading.stats}
                 />
-                <StatCard
-                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg>}
-                  label="Publications" value={stats.publications}
+                <StatCard onClick={() => navigate('articles')} label="Articles publiés"            value={stats.articlesPublies}
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <line x1="10" y1="9" x2="8" y2="9"/>
+                  </svg>}
                   accent="#6b4c8a" loading={loading.stats}
                 />
               </div>
@@ -662,6 +740,18 @@ const Admin = () => {
                                   <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                                 </svg>
                               </button>
+                              {/* ✅ NOUVEAU BOUTON VOIR */}
+                            <button
+                              className="ad-act-btn ad-act-view"
+                              title={`Voir les documents de ${user.nom}`}
+                              onClick={() => viewUserDocuments(user)}
+                              disabled={loading.action}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </svg>
+                            </button>
                             </div>
                           </td>
                         </tr>
@@ -704,14 +794,19 @@ const Admin = () => {
           {/* ═══════════ DOCUMENTS ═══════════ */}
           {activeTab === 'documents' && (
             <div className="ad-tab-pane">
-              <Document key="documents-tab" />
+              <Document role="ADMIN" />
             </div>
           )}
 
           {/* ═══════════ PROJETS ═══════════ */}
           {activeTab === 'projet' && (
             <div className="ad-tab-pane">
-              <Projet key="projet-tab" />
+              <Projet key="projet-tab" user={user} showOnlyUserProjets={false} />
+            </div>
+          )}
+          {activeTab === 'articles' && (
+            <div className="ad-tab-pane">
+              <ArticlePub userRole="ADMIN" />
             </div>
           )}
           {/* ═══════════ RAPPORT ═══════════ */}

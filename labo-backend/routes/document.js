@@ -71,31 +71,32 @@ const checkDocumentAccess = async (req, res, next) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    if (userRole === 'ADMIN') {
-      return next();
-    }
-
+    if (userRole === 'ADMIN') return next();
+    if (userRole === 'INVITE') return res.status(403).json({ message: 'Accès non autorisé' });
 
     const document = await pool.query(
-      'SELECT auteur_id FROM document WHERE id = $1',
+      'SELECT auteur_id, projet_id FROM document WHERE id = $1',
       [documentId]
     );
-
-    if (document.rows.length === 0){
+    if (document.rows.length === 0)
       return res.status(404).json({ message: 'Document non trouvé' });
+
+    const doc = document.rows[0];
+
+    // Author can always edit their own doc
+    if (doc.auteur_id === userId) return next();
+
+    // Project creator can edit/delete any doc within their project
+    if (doc.projet_id) {
+      const projet = await pool.query(
+        'SELECT createur_id FROM projet WHERE id = $1',
+        [doc.projet_id]
+      );
+      if (projet.rows.length > 0 && projet.rows[0].createur_id === userId)
+        return next();
     }
 
-    if (userRole === 'INVITE'){
-      return res.status(403).json({ message: 'Accès non autorisé' });
-  }
-    if (userRole === 'CHERCHEUR' || userRole === 'CADRE_TECHNIQUE') {
-      if (document.rows[0].auteur_id === userId) {
-        return next();
-      } else {
-        return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres documents' });
-      }
-    }
-    next();
+    return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres documents' });
   } catch (error) {
     console.error('Erreur checkDocumentAccess:', error);
     res.status(500).json({ message: 'Erreur serveur' });
@@ -330,9 +331,44 @@ router.get("/projet/:projetId", auth, async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════
-// ROUTES PRINCIPALES
-// ══════════════════════════════════════════════════════════════════
+// ─────────────────────────────
+// GET BY USER ID (pour ADMIN)
+// ─────────────────────────────
+router.get("/user/:userId", auth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const role = req.user.role;
+    const currentUserId = req.user.id;
+
+    // Seul ADMIN peut voir les documents d'un autre utilisateur
+    if (role !== 'ADMIN' && parseInt(currentUserId) !== parseInt(userId)) {
+      return res.status(403).json({ error: "Accès non autorisé" });
+    }
+
+    let query = `
+      SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre
+      FROM document d
+      LEFT JOIN utilisateur u ON d.auteur_id = u.id
+      LEFT JOIN projet p ON d.projet_id = p.id
+      WHERE d.auteur_id = $1
+    `;
+    let params = [userId];
+
+    if (role === 'INVITE') {
+      query += ` AND d.visibilite = true`;
+    } else if (role !== 'ADMIN') {
+      query += ` AND (d.auteur_id = $2 OR d.visibilite = true)`;
+      params.push(currentUserId);
+    }
+
+    query += ' ORDER BY d.date_creation DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erreur GET documents by user:", err);
+    res.status(500).json({ error: "Erreur récupération des documents" });
+  }
+});
 
 // ─────────────────────────────
 // GET ALL
@@ -343,23 +379,12 @@ router.get("/", auth, async (req, res) => {
     const userId = req.user.id;
 
     let query = `
-      SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre
+      SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre, p.createur_id as projet_createur_id
       FROM document d
       LEFT JOIN utilisateur u ON d.auteur_id = u.id
       LEFT JOIN projet p ON d.projet_id = p.id
     `;
     let params = [];
-
-    if (role === 'ADMIN') {
-      query += ' ORDER BY d.date_creation DESC';
-    } else if (role === 'CHERCHEUR' || role === 'CADRE_TECHNIQUE') {
-      // Ses propres docs + les docs visibles des autres
-      query += ` WHERE (d.auteur_id = $1 OR d.visibilite = true) ORDER BY d.date_creation DESC`;
-      params = [userId];
-    } else {
-      // INVITE : uniquement visibles
-      query += ` WHERE d.visibilite = true ORDER BY d.date_creation DESC`;
-    }
 
     const result = await pool.query(query, params);
     result.rows = result.rows.map(doc => ({
@@ -373,7 +398,61 @@ router.get("/", auth, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
-
+router.get('/articles', auth, async (req, res) => {
+  try {
+    const { role, id: userId } = req.user;
+ 
+    let query = `
+      SELECT
+        pub.id              AS publication_id,
+        pub.document_id,
+        pub.chercheur_id,
+        pub.date_publication,
+ 
+        d.titre,
+        d.sous_type,
+        d.description,
+        d.mots_cles,
+        d.lien,
+        d.visibilite,
+        d.doi,
+        d.resume,
+        d.citation_apa,
+        d.journal,
+        d.maison_edition,
+        d.date_creation,
+        d.projet_id,
+ 
+        u.nom   AS chercheur_nom,
+        u.email AS chercheur_email,
+        u.role  AS chercheur_role,
+ 
+        p.titre AS projet_titre
+      FROM publication pub
+      JOIN document    d ON d.id  = pub.document_id
+      JOIN utilisateur u ON u.id  = pub.chercheur_id
+      LEFT JOIN projet p ON p.id  = d.projet_id
+      WHERE d.type = 'ARTICLE'
+    `;
+ 
+    const values = [];
+ 
+    // Si pas admin → seulement ses propres publications
+    if (role !== 'ADMIN') {
+      query += ` AND pub.chercheur_id = $1`;
+      values.push(userId);
+    }
+ 
+    query += ` ORDER BY pub.date_publication DESC`;
+ 
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+ 
+  } catch (err) {
+    console.error('Erreur GET /publication/articles:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 // ─────────────────────────────
 // GET BY ID
 // ─────────────────────────────
@@ -384,7 +463,7 @@ router.get("/:id", auth, async (req, res) => {
     const userId = req.user.id;
 
     let query = `
-      SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre
+      SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre, p.createur_id as projet_createur_id
       FROM document d
       LEFT JOIN utilisateur u ON d.auteur_id = u.id
       LEFT JOIN projet p ON d.projet_id = p.id
@@ -426,9 +505,11 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
       titre, description, mots_cles, type, projet_id,
       doi, resume, citation_APA, sous_type, journal, maison_edition,
       resolution, format,
-      visibilite
+      visibilite,
+      date_creation
     } =req.body;
-if (!DOCUMENT_TYPES.includes(type)) return res.status(400).json({ error: "Type document invalide" });
+    if (!DOCUMENT_TYPES.includes(type)) 
+      return res.status(400).json({ error: "Type document invalide" });
     if (!titre) return res.status(400).json({ error: "Le titre est requis" });
 
     if (type === 'ARTICLE' && !['JOURNAL', 'CONFERENCE'].includes(sous_type)) {
@@ -447,11 +528,23 @@ if (!DOCUMENT_TYPES.includes(type)) return res.status(400).json({ error: "Type d
     const docResolution = type === 'IMAGE' ? (resolution || null) : null;
     const docFormat = type === 'IMAGE' ? (format || null) : null;
     const docTaille = type === 'IMAGE' && req.file ? req.file.size : null;
-
+    // ← GESTION DE LA DATE DE CRÉATION
+    let finalDateCreation;
+    if (date_creation && date_creation.trim() !== "") {
+      // Utiliser la date fournie par l'utilisateur
+      finalDateCreation = new Date(date_creation);
+      if (isNaN(finalDateCreation.getTime())) {
+        return res.status(400).json({ error: "Format de date invalide. Utilisez YYYY-MM-DD" });
+      }
+    } else {
+      // Date actuelle par défaut
+      finalDateCreation = new Date();
+    }
     console.log("Creating document with data:", {
       titre,
       type,
       visibilite: docVisibilite,
+      date_creation: finalDateCreation,
       userId: req.user.id,
       hasFile: !!req.file
     });
@@ -465,14 +558,15 @@ if (!DOCUMENT_TYPES.includes(type)) return res.status(400).json({ error: "Type d
          visibilite,
          date_creation, date_modification)
        VALUES
-        ($1,$2,$3,$4,$5, $6,$7,$8, $9,$10,$11,$12,$13, $14,$15,$16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ($1,$2,$3,$4,$5, $6,$7,$8, $9,$10,$11,$12,$13, $14,$15,$16, $17,$18, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         titre, description || null, mots_cles || null, type, docSousType,
         req.user.id, projet_id || null, lien,
         docDoi, docResume, docCitationAPA, docJournal, docMaisonEdit,
         docResolution, docFormat, docTaille,
-        docVisibilite
+        docVisibilite,
+        finalDateCreation
       ]
     );
 
@@ -502,7 +596,8 @@ router.put("/:id", auth, checkDocumentAccess, upload.single("file"), async (req,
       titre, description, mots_cles, projet_id,
       doi, resume, citation_APA, journal, maison_edition,
       resolution, format,
-      visibilite   
+      visibilite,
+      date_creation   
     } = req.body;
 
     const docResult = await pool.query("SELECT * FROM document WHERE id=$1", [id]);
@@ -533,7 +628,20 @@ router.put("/:id", auth, checkDocumentAccess, upload.single("file"), async (req,
     if (description !== undefined) { updates.push(`description = $${idx++}`); values.push(description === "" ? null : description); }
     if (mots_cles !== undefined)   { updates.push(`mots_cles = $${idx++}`);   values.push(mots_cles === "" ? null : mots_cles); }
     if (projet_id !== undefined)   { updates.push(`projet_id = $${idx++}`);   values.push(projet_id === "" || projet_id === "null" ? null : projet_id); }
-
+    // ← GESTION DE LA DATE DE CRÉATION (modifiable)
+    if (date_creation !== undefined) {
+      let finalDate;
+      if (date_creation && date_creation.trim() !== "") {
+        finalDate = new Date(date_creation);
+        if (isNaN(finalDate.getTime())) {
+          return res.status(400).json({ error: "Format de date invalide. Utilisez YYYY-MM-DD" });
+        }
+      } else {
+        finalDate = new Date(); // Date actuelle si vide
+      }
+      updates.push(`date_creation = $${idx++}`);
+      values.push(finalDate);
+    }
     // ── visibilite : n'importe quel rôle autorisé peut toggle son propre doc ──
     if (visibilite !== undefined) { updates.push(`visibilite = $${idx++}`); values.push(visibilite === 'true' || visibilite === true); }
 
@@ -629,15 +737,16 @@ router.get("/:id/download", auth, async (req, res) => {
   }
 });
 
+
 // ─────────────────────────────
 // PUBLISH (ARTICLE uniquement)
 // ─────────────────────────────
 router.post("/:id/publish", auth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id);
     const { cible_id } = req.body;
     const userRole = req.user.role;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id);
 
     const docResult = await pool.query("SELECT * FROM document WHERE id=$1", [id]);
     if (docResult.rows.length === 0) return res.status(404).json({ error: "Document non trouvé" });
@@ -652,7 +761,7 @@ router.post("/:id/publish", auth, async (req, res) => {
       if (cible_id) {
         const userCheck = await pool.query(
           "SELECT id FROM utilisateur WHERE id=$1 AND role IN ('ADMIN','CHERCHEUR','CADRE_TECHNIQUE')",
-          [cible_id]
+          [parseInt(cible_id)]
         );
         if (userCheck.rows.length === 0) return res.status(400).json({ error: "Utilisateur cible non trouvé" });
         publicationUserId = cible_id;
@@ -660,7 +769,7 @@ router.post("/:id/publish", auth, async (req, res) => {
         publicationUserId = document.auteur_id;
       }
     } else if (userRole === "CHERCHEUR" || userRole === "CADRE_TECHNIQUE") {
-      if (document.auteur_id !== userId) return res.status(403).json({ error: "Vous ne pouvez publier que vos propres documents" });
+      if (parseInt(document.auteur_id) !== parseInt(userId)) return res.status(403).json({ error: "Vous ne pouvez publier que vos propres documents" });
       publicationUserId = userId;
     } else {
       return res.status(403).json({ error: "Seul l'administrateur, chercheur ou cadre technique peut publier" });
@@ -689,7 +798,7 @@ router.post("/:id/publish", auth, async (req, res) => {
     }
 
     // Publier = aussi rendre visible automatiquement
-    await pool.query("UPDATE document SET visibilite=true WHERE id=$1", [id]);
+    //await pool.query("UPDATE document SET visibilite=true WHERE id=$1", [id]);
 
     const lienComplet = document.lien
       ? `${req.protocol}://${req.get("host")}/${document.lien.replace(/\\/g, "/")}`
@@ -697,10 +806,10 @@ router.post("/:id/publish", auth, async (req, res) => {
 
     res.json({
       message: "Document publié et rendu visible avec succès",
-      document: { id: document.id, titre: document.titre, lien: lienComplet, visibilite: true, publicationUserId }
+      document: { id: document.id, titre: document.titre, lien: lienComplet, visibilite: document.visibilite, publicationUserId,publie: true }
     });
   } catch (err) {
-    console.error(err);
+    console.error("Erreur publication:", err);
     res.status(500).json({ error: "Erreur publication" });
   }
 });

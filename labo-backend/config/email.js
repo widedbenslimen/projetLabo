@@ -11,15 +11,15 @@ const transporter = nodemailer.createTransport({
 
 async function sendValidationEmail(email, nom) {
   await transporter.sendMail({
-    from: `"LabLESOR" <${process.env.EMAIL_USER}>`,
+    from: `"LESOR" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: "✔ Votre compte a été validé — LabLESOR",
+    subject: "✔ Votre compte a été validé — LESOR",
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;
                   padding: 30px; border: 1px solid #e0e0e0; border-radius: 8px;">
         <h2 style="color: #2e6b8a;">Bonjour ${nom},</h2>
         <p>Votre inscription a été <strong>validée par l'administrateur</strong>.</p>
-        <p>Vous pouvez maintenant <strong>vous connecter</strong> à la plateforme LabLESOR.</p>
+        <p>Vous pouvez maintenant <strong>vous connecter</strong> à la plateforme LESOR.</p>
         <a href="http://localhost:5173/Connexion"
            style="display:inline-block; margin-top:20px; padding:12px 24px;
                   background-color:#2e6b8a; color:#fff; text-decoration:none;
@@ -37,7 +37,7 @@ async function sendValidationEmail(email, nom) {
 
 async function sendNewUserNotificationToAdmin(adminEmail, nomUtilisateur, emailUtilisateur) {
   await transporter.sendMail({
-    from: `"LabLESOR" <${process.env.EMAIL_USER}>`,
+    from: `"LESOR" <${process.env.EMAIL_USER}>`,
     to: adminEmail,
     subject: "🔔 Nouvelle inscription en attente de validation",
     html: `

@@ -27,22 +27,23 @@ function requireAdmin(req,res,next){
  }
  next();
 }
+
 // ─── STATS ────────────────────────────────────────────────────────────────────
 // GET /api/admin/stats
 router.get('/stats', auth, requireAdmin, async (req, res) => {
   try {
-    const [u, d, p, pub, recent] = await Promise.all([
+    const [u, d, p, art, recent] = await Promise.all([
       pool.query("SELECT COUNT(*) FROM utilisateur WHERE actif = TRUE"),
       pool.query("SELECT COUNT(*) FROM document"),
       pool.query("SELECT COUNT(*) FROM projet"),
-      pool.query("SELECT COUNT(*) FROM publication"),
+      pool.query("SELECT COUNT(*) FROM document WHERE type = 'ARTICLE'"),
       pool.query("SELECT id, nom, email, role, date_inscription FROM utilisateur ORDER BY date_inscription DESC LIMIT 5"),
     ]);
     res.json({
       utilisateurs_actifs: parseInt(u.rows[0].count),
       documents: parseInt(d.rows[0].count),
       projets: parseInt(p.rows[0].count),
-      publications: parseInt(pub.rows[0].count),
+      articles: parseInt(art.rows[0].count),
       recent_users: recent.rows,
     });
   } catch (err) {

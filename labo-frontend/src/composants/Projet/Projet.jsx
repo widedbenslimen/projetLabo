@@ -40,12 +40,42 @@ const STATUT_CONFIG = {
   en_cours: { label: "En cours",  color: "#6366f1", bg: "rgba(99,102,241,.10)",  border: "rgba(99,102,241,.28)" },
   termine:  { label: "Terminé",   color: "#0d9488", bg: "rgba(13,148,136,.10)",  border: "rgba(13,148,136,.28)" },
 };
-
 const TYPE_ICONS = {
   ENQUETE: "📋", RAPPORT: "📊", IMAGE: "🖼️",
   VIDEO: "🎬", CARTE: "🗺️", ARTICLE: "📰",
 };
+function getProjectPermissions({ currentUserId, userRole, createurId, participants }) {
+  const role = userRole?.toUpperCase();
 
+  const isAdmin = role === 'ADMIN';
+
+  const isCreator = currentUserId === createurId;
+
+  const isParticipant = participants?.some(p => p.id === currentUserId);
+
+  return {
+    isManager: isAdmin || isCreator, // ✅ L'admin peut tout gérer
+    isManagerMo: isAdmin || isCreator || isParticipant,
+    isParticipant,
+    isAdmin,
+    canEdit: isAdmin || isCreator,   // ✅ Ajout explicite pour l'édition
+    canDelete: isAdmin || isCreator, // ✅ Ajout explicite pour la suppression
+    canManageOwnDocuments: isParticipant || isAdmin || isCreator,  // Gérer ses docs
+  };
+}
+function ActionButton({ onClick, disabled, title, disabledTitle, className, children }) {
+  return (
+    <button
+      className={`pj-act-btn${className ? ` ${className}` : ""}${disabled ? " pj-act-btn--disabled" : ""}`}
+      title={disabled ? (disabledTitle || "Action non autorisée") : title}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      aria-disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
 /* ─────────────────────────────────────────────
    STATUT BADGE
 ───────────────────────────────────────────── */
@@ -89,14 +119,21 @@ function PjModal({ title, onClose, children, wide }) {
    Accessible au créateur pour retirer des documents du projet.
    Les documents retirés restent dans l'espace personnel de leur auteur.
 ───────────────────────────────────────────── */
-function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumentDetached }) {
+function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumentDetached, userRole, participants }) {
   const [documents,  setDocuments]  = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [removing,   setRemoving]   = useState(null); // id du doc en cours de suppression
   const [confirmDoc, setConfirmDoc] = useState(null); // doc à confirmer avant retrait
 
   const isCreator = currentUserId === createurId;
-
+  const isAdmin = userRole === 'ADMIN';
+  const isParticipant = participants?.some(p => p.id === currentUserId);
+  // Un participant peut retirer SES documents, l'admin et créateur peuvent tout retirer
+  const canRemoveDocument = (doc) => {
+    if (isAdmin || isCreator) return true;
+    return doc.auteur_id === currentUserId;  // Participant peut retirer ses propres docs
+  };
+  const canManage = isCreator || isAdmin|| isParticipant;  // ✅ Admin ou créateur
   const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
@@ -125,7 +162,7 @@ function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumen
     }
   };
 
-  if (!isCreator) return null;
+  if (!canManage) return null;
 
   return (
     <div className="pj-form-section">
@@ -186,9 +223,9 @@ function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumen
                 ) : (
                   <button
                     className="pj-docs-manager-btn-remove"
-                    title="Retirer ce document du projet"
-                    onClick={() => setConfirmDoc(doc)}
-                    disabled={removing === doc.id}
+                    title={canRemoveDocument(doc) ? "Retirer ce document du projet" : "Vous ne pouvez retirer que vos propres documents"}
+                    onClick={() => canRemoveDocument(doc) && setConfirmDoc(doc)}
+                    disabled={!canRemoveDocument(doc) || removing === doc.id}
                   >
                     ✕ Retirer
                   </button>
@@ -205,7 +242,7 @@ function ProjetDocumentsManager({ projetId, currentUserId, createurId, onDocumen
 /* ─────────────────────────────────────────────
    FORMULAIRE PROJET
 ───────────────────────────────────────────── */
-function ProjetForm({ initial, onSubmit, onCancel, loading, currentUserId }) {
+function ProjetForm({ initial, onSubmit, onCancel, loading, currentUserId,userRole  }) {
   const [form, setForm] = useState({
     titre: "", description: "", domaine: "", mots_cles: "",
     annee_publication: "", date_debut: "", date_fin: "", statut: "en_cours",
@@ -255,7 +292,9 @@ function ProjetForm({ initial, onSubmit, onCancel, loading, currentUserId }) {
 
   const isEditing  = !!initial;
   const isCreator  = isEditing && currentUserId === initial?.createur_id;
-
+  const isAdmin = userRole === 'ADMIN';  // ✅ Ajoutez cette ligne
+  const isParticipant = isEditing && initial?.participants?.some(p => p.id === currentUserId);
+  const canManageDocuments = isEditing && (isCreator || isAdmin || isParticipant);  // ✅ Admin ou créateur
   return (
     <form className="pj-form" onSubmit={handleSubmit}>
       <div className="pj-form-section">
@@ -352,11 +391,13 @@ function ProjetForm({ initial, onSubmit, onCancel, loading, currentUserId }) {
 
       {/* ── Section gestion des documents : visible uniquement en modification
            et uniquement pour le créateur du projet ── */}
-      {isEditing && isCreator && (
+      {isEditing && canManageDocuments  && (
         <ProjetDocumentsManager
           projetId={initial.id}
           currentUserId={currentUserId}
           createurId={initial.createur_id}
+           userRole={userRole}
+           participants={initial?.participants || []}
         />
       )}
 
@@ -391,6 +432,7 @@ function ProjetDocRow({ doc }) {
           {doc.sous_type && <span className="pj-doc-sous-type">{doc.sous_type}</span>}
           {doc.auteur_nom && <span className="pj-doc-auteur">— {doc.auteur_nom}</span>}
         </div>
+        <div><h6>Description:</h6>{doc.description && <span className="pj-doc-auteur"> {doc.description }</span>}</div>
       </div>
       <div className="pj-doc-actions">
         {fileUrl ? (
@@ -420,9 +462,13 @@ function ProjetDocRow({ doc }) {
 /* ─────────────────────────────────────────────
    PANNEAU DÉTAIL
 ───────────────────────────────────────────── */
-function DetailPanel({ projet, onClose, onEdit, onDelete }) {
+function DetailPanel({ projet, onClose, onEdit, onDelete, currentUserId, userRole }) {
   const s = STATUT_CONFIG[projet.statut] || STATUT_CONFIG.en_cours;
-
+  const isAdmin   = userRole === 'ADMIN';
+  const isCreator = projet.createur_id === currentUserId;
+  const isParticipant = projet.participants?.some(p => p.id === currentUserId);
+  const canManage = isAdmin || isCreator;
+  const canManageMo = isAdmin || isCreator|| isParticipant;
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -503,9 +549,20 @@ function DetailPanel({ projet, onClose, onEdit, onDelete }) {
         </div>
 
         <div className="pj-panel-footer">
-          <button className="pj-btn-ghost" onClick={() => onEdit(projet)}>✎ Modifier</button>
-          <button className="pj-btn-danger" onClick={() => onDelete(projet.id)}>🗑 Supprimer</button>
+          <button
+            className={`pj-btn-ghost${!canManageMo ? " pj-btn--disabled" : ""}`}
+            onClick={canManageMo ? () => onEdit(projet) : undefined}
+            disabled={!canManageMo}
+            title={!canManageMo ? "Seul le créateur ou un administrateur peut modifier ce projet" : "Modifier"}
+          >✎ Modifier</button>
+          <button
+            className={`pj-btn-danger${!canManage ? " pj-btn--disabled" : ""}`}
+            onClick={canManage ? () => onDelete(projet.id) : undefined}
+            disabled={!canManage}
+            title={!canManage ? "Seul le créateur ou un administrateur peut supprimer ce projet" : "Supprimer"}
+          >🗑 Supprimer</button>
         </div>
+
       </div>
     </>
   );
@@ -729,9 +786,12 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             <span className="pj-count-pill">{projets.length} projet{projets.length !== 1 ? "s" : ""}</span>
           )}
         </div>
-        <button className="pj-btn-primary" onClick={() => setEditing(true)}>
-          + Nouveau projet
-        </button>
+         {/* ✅ Condition : Afficher uniquement pour ADMIN ou CHERCHEUR */}
+        {user?.role === 'ADMIN' || user?.role === 'CHERCHEUR' ? (
+          <button className="pj-btn-primary" onClick={() => setEditing(true)}>
+            + Nouveau projet
+          </button>
+        ) : null}
       </div>
 
       {/* ── Toolbar ── */}
@@ -832,10 +892,31 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
                       </div>
 
                       <div className="pj-col-center pj-actions-col" onClick={e => e.stopPropagation()}>
-                        <button className="pj-act-btn" title="Modifier"
-                          onClick={() => { setEditing(p); setSelected(null); }}>✎</button>
-                        <button className="pj-act-btn pj-act-del" title="Supprimer"
-                          onClick={() => setConfirm(p.id)}>🗑</button>
+                        {(() => {
+                          const perms = getProjectPermissions({
+                            currentUserId: user?.id,
+                            userRole: user?.role,
+                            createurId: p.createur_id,
+                            participants: p.participants || [],
+                          });
+                          return (
+                            <>
+                              <ActionButton
+                                title="Modifier"
+                                disabledTitle="Seul le créateur ou un administrateur peut modifier ce projet"
+                                disabled={!perms.isManagerMo}
+                                onClick={() => { setEditing(p); setSelected(null); }}
+                              >✎</ActionButton>
+                              <ActionButton
+                                className="pj-act-del"
+                                title="Supprimer"
+                                disabledTitle="Seul le créateur ou un administrateur peut supprimer ce projet"
+                                disabled={!perms.isManager}
+                                onClick={() => setConfirm(p.id)}
+                              >🗑</ActionButton>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
@@ -873,12 +954,15 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
         <ScholarSidebar projets={projets} />
       </div>
 
+      
       {selected && !editing && (
         <DetailPanel
           projet={selected}
           onClose={() => setSelected(null)}
           onEdit={p => { setEditing(p); setSelected(null); }}
           onDelete={id => { setConfirm(id); setSelected(null); }}
+          currentUserId={user?.id}
+          userRole={user?.role}
         />
       )}
 
@@ -889,6 +973,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             onCancel={() => setEditing(null)}
             loading={formLoading}
             currentUserId={user?.id}
+            userRole={user?.role}
           />
         </PjModal>
       )}
@@ -901,6 +986,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
             onCancel={() => setEditing(null)}
             loading={formLoading}
             currentUserId={user?.id}
+            userRole={user?.role}
           />
         </PjModal>
       )}
