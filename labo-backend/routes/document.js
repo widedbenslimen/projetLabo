@@ -31,28 +31,50 @@ const storage = multer.diskStorage({
   }
 });
 
+const allowedTypes = {
+  'ENQUETE': {
+    ext: /pdf|doc|docx|txt|xls|xlsx/,
+    mime: /pdf|msword|officedocument|text|excel|ms-excel/
+  },
+  'RAPPORT': {
+    ext: /pdf|doc|docx|txt/,
+    mime: /pdf|msword|officedocument|text/
+  },
+  'IMAGE': {
+    ext: /jpg|jpeg|png|gif|bmp|svg/,
+    mime: /image/
+  },
+  'VIDEO': {
+    ext: /mp4|avi|mov|wmv|flv|mkv/,
+    mime: /video/
+  },
+  'CARTE': {
+    ext: /pdf|jpg|jpeg|png|geojson|kml|kmz/,
+    mime: /pdf|image|geo|kml/
+  },
+  'ARTICLE': {
+    ext: /pdf|doc|docx|txt/,
+    mime: /pdf|msword|officedocument|text/
+  }
+};
+
 const fileFilter = (req, file, cb) => {
   const documentType = req.body.type;
-  const allowedTypes = {
-    'ENQUETE': /pdf|doc|docx|txt|xls|xlsx/,
-    'RAPPORT': /pdf|doc|docx|txt/,
-    'IMAGE':   /jpg|jpeg|png|gif|bmp|svg/,
-    'VIDEO':   /mp4|avi|mov|wmv|flv|mkv/,
-    'CARTE':   /pdf|jpg|jpeg|png|geojson|kml|kmz/,
-    'ARTICLE': /pdf|doc|docx|txt/
-  };
-  if (!documentType || !allowedTypes[documentType]) {
+  const allowed = allowedTypes[documentType];
+
+  if (!documentType || !allowed) {
     return cb(new Error('Type de document non spécifié ou invalide'));
   }
 
-  const extname = allowedTypes[documentType].test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes[documentType].test(file.mimetype);
-  
+  const extname = allowed.ext.test(
+    path.extname(file.originalname).toLowerCase().replace('.', '')
+  );
+  const mimetype = allowed.mime.test(file.mimetype);
+
   if (extname && mimetype) {
     return cb(null, true);
-  } else {
-    cb(new Error(`Type de fichier non supporté pour le document de type ${documentType}`));
   }
+  cb(new Error(`Type de fichier non supporté pour ${documentType}`));
 };
 
 const upload = multer({ 
@@ -376,7 +398,7 @@ router.get("/user/:userId", auth, async (req, res) => {
 router.get("/", auth, async (req, res) => {
   try {
     const role = req.user.role;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id);
 
     let query = `
       SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre, p.createur_id as projet_createur_id
@@ -460,7 +482,7 @@ router.get("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
     const role = req.user.role;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id);
 
     let query = `
       SELECT d.*, u.nom as auteur_nom, u.email as auteur_email, p.titre as projet_titre, p.createur_id as projet_createur_id
@@ -469,7 +491,7 @@ router.get("/:id", auth, async (req, res) => {
       LEFT JOIN projet p ON d.projet_id = p.id
       WHERE d.id = $1
     `;
-    let params = [id];
+    let params = [parseInt(id)];
 
     if (role === 'INVITE') {
       query += ' AND d.visibilite = true';
@@ -562,7 +584,7 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
        RETURNING *`,
       [
         titre, description || null, mots_cles || null, type, docSousType,
-        req.user.id, projet_id || null, lien,
+        req.user.id, (projet_id && projet_id !== "" ? parseInt(projet_id) : null), lien,
         docDoi, docResume, docCitationAPA, docJournal, docMaisonEdit,
         docResolution, docFormat, docTaille,
         docVisibilite,
@@ -627,7 +649,7 @@ router.put("/:id", auth, checkDocumentAccess, upload.single("file"), async (req,
     if (titre !== undefined)       { updates.push(`titre = $${idx++}`);       values.push(titre); }
     if (description !== undefined) { updates.push(`description = $${idx++}`); values.push(description === "" ? null : description); }
     if (mots_cles !== undefined)   { updates.push(`mots_cles = $${idx++}`);   values.push(mots_cles === "" ? null : mots_cles); }
-    if (projet_id !== undefined)   { updates.push(`projet_id = $${idx++}`);   values.push(projet_id === "" || projet_id === "null" ? null : projet_id); }
+    if (projet_id !== undefined)   { updates.push(`projet_id = $${idx++}`);   values.push(projet_id === "" || projet_id === "null" || !projet_id ? null : parseInt(projet_id));}
     // ← GESTION DE LA DATE DE CRÉATION (modifiable)
     if (date_creation !== undefined) {
       let finalDate;

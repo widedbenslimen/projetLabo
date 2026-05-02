@@ -508,7 +508,7 @@ function DetailPanel({ projet, onClose, onEdit, onDelete, currentUserId, userRol
                 </div>
               </dd></>
             )}
-            {projet.annee_publication && (<><dt>Année</dt><dd>{projet.annee_publication}</dd></>)}
+            {projet.annee_publication && (<><dt>Année de publication</dt><dd>{projet.annee_publication}</dd></>)}
             {projet.date_debut && (<><dt>Début</dt><dd>{new Date(projet.date_debut).toLocaleDateString("fr-FR")}</dd></>)}
             {projet.date_fin && (<><dt>Fin</dt><dd>{new Date(projet.date_fin).toLocaleDateString("fr-FR")}</dd></>)}
             {projet.mots_cles && (
@@ -830,9 +830,7 @@ export default function Projet({ user, showOnlyUserProjets = false }) {
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        <button className="pj-btn-refresh" onClick={loadData} disabled={loading} title="Actualiser">
-          <span className={loading ? "pj-spin" : ""}>↻</span>
-        </button>
+        
       </div>
 
       {/* ── Body Layout ── */}

@@ -1,34 +1,27 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import lesorBg from "../../assets/LESOR.jpg"; // ← ajustez le chemin si besoin
+import logo from "../../assets/image.png";
 
 
 function Connexion() {
-  const [type, setType] = useState("signIn");
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({
-    email: "",
-    mot_de_passe: "",
-  });
-
+  const [form, setForm] = useState({ email: "", mot_de_passe: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleOnClick = (text) => {
-    if (text !== type) {
-      setType(text);
-    }
-  };
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  const handleChange = (e) =>
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage("");
     setError("");
+    setLoading(true);
 
     try {
       const res = await axios.post("http://localhost:8000/api/connexion", form);
@@ -37,7 +30,6 @@ function Connexion() {
       localStorage.setItem("user", JSON.stringify(res.data.utilisateur));
 
       setMessage("Connexion réussie ✅");
-      const role = res.data.utilisateur.role;
 
       const roleRoutes = {
         ADMIN: "/admin",
@@ -47,92 +39,115 @@ function Connexion() {
       };
 
       setTimeout(() => {
-        navigate(roleRoutes[role] || "/");
+        navigate(roleRoutes[res.data.utilisateur.role] || "/");
       }, 1000);
     } catch (err) {
-      setError(err.response?.data?.message || "Erreur lors de la connexion");
+      setError(err.response?.data?.message || "Identifiants incorrects");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const containerClass = "container " + (type === "signUp" ? "right-panel-active" : "");
-
   return (
-    <div className="auth-page">
-      <div className={containerClass} id="container">
+    <div className="auth-page" style={{ backgroundImage: `url(${lesorBg})` }}>
+      {/* overlay sombre */}
+      <div className="auth-overlay" />
 
-        {/* Panneau d'inscription (côté gauche, visible en mode signUp) */}
-        <div className="form-container sign-up-container">
-          <form>
-            <h1>Créer un compte</h1>
-            
-            
-            <p style={{ marginTop: "20px", fontSize: "13px", color: "#555" }}>
-              Pas encore inscrit ?
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate("/Inscription")}
-            >
-              S'inscrire
-            </button>
-          </form>
+      <div className="auth-card" style={{ animationName: "fadeUp" }}>
+        {/* ── Logo ── */}
+        <div className="auth-logo">
+          <img src={logo} alt="logo" className="ad-logo" />
+          <span className="auth-logo-text">LESOR</span>
         </div>
 
-        {/* Panneau de connexion (côté droit par défaut) */}
-        <div className="form-container sign-in-container">
-          <form onSubmit={handleSubmit}>
-            <h1>Connexion</h1>
-            
+        <h1 className="auth-title">
+          Bon <span className="auth-title-accent">retour !</span>
+        </h1>
+        <p className="auth-subtitle">
+          Connectez-vous pour accéder à votre espace personnel
+        </p>
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          {/* Email */}
+          <div className="auth-field">
+            <label className="auth-label">Adresse Email</label>
             <input
               type="email"
               name="email"
-              placeholder="Adresse Email"
+              placeholder="nom@domaine.com"
               value={form.email}
               onChange={handleChange}
+              className="auth-input"
               required
             />
+          </div>
 
-            <input
-              type="password"
-              name="mot_de_passe"
-              placeholder="Mot de passe"
-              value={form.mot_de_passe}
-              onChange={handleChange}
-              required
-            />
-
-            
-            <button type="submit">Se connecter</button>
-
-            {message && <p className="success">{message}</p>}
-            {error && <p className="error">{error}</p>}
-          </form>
-        </div>
-
-        <div className="overlay-container">
-          <div className="overlay">
-            <div className="overlay-panel overlay-left">
-              <h1>Bon retour !</h1>
-              <p>Pour rester connecté, veuillez vous connecter avec vos informations personnelles</p>
+          {/* Mot de passe */}
+          <div className="auth-field">
+            <label className="auth-label">Mot de passe</label>
+            <div className="auth-pw-wrap">
+              <input
+                type={showPw ? "text" : "password"}
+                name="mot_de_passe"
+                placeholder="••••••••"
+                value={form.mot_de_passe}
+                onChange={handleChange}
+                className="auth-input auth-input-pw"
+                required
+              />
               <button
-                className="ghost"
-                onClick={() => handleOnClick("signIn")}
+                type="button"
+                className="auth-eye-btn"
+                onClick={() => setShowPw((v) => !v)}
+                aria-label="Afficher/Masquer le mot de passe"
               >
-                Se connecter
-              </button>
-            </div>
-            <div className="overlay-panel overlay-right">
-              <h1>Bonjour !</h1>
-              <p>Entrez vos informations personnelles et commencez votre aventure avec nous</p>
-              <button
-                className="ghost"
-                onClick={() => handleOnClick("signUp")}
-              >
-                S'inscrire
+                {showPw ? "🙈" : "👁"}
               </button>
             </div>
           </div>
+
+          
+
+          <button
+            type="submit"
+            className="auth-btn-primary"
+            disabled={loading}
+          >
+            {loading ? "Connexion…" : "Se connecter"}
+          </button>
+
+          {message && <p className="auth-msg auth-msg-success">{message}</p>}
+          {error && <p className="auth-msg auth-msg-error">{error}</p>}
+        </form>
+
+        {/* Divider */}
+        <div className="auth-divider">
+          <span />
+          ou
+          <span />
         </div>
+
+        <button
+          type="button"
+          className="auth-btn-secondary"
+          onClick={() => navigate("/Inscription")}
+        >
+          ✍️&nbsp;&nbsp;Créer un compte
+        </button>
+
+        <p className="auth-footer-text">
+          Pas encore inscrit ?{" "}
+          <a
+            href="#"
+            className="auth-footer-link"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/Inscription");
+            }}
+          >
+            S'inscrire
+          </a>
+        </p>
       </div>
     </div>
   );

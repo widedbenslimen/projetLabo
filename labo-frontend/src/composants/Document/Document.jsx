@@ -597,10 +597,10 @@ useEffect(() => {
 }, []);
 
    const visibleDocs = useMemo(() => {
-  let result = caps.filterOwn ? docs.filter(d => d.auteur_id === currentUserId) : [...docs];
+  let result = caps.filterOwn ? docs.filter(d => String(d.auteur_id) === String(currentUserId)) : [...docs];
   
   if (filterUserId && caps.isAdmin) {
-    result = result.filter(d => d.auteur_id === filterUserId);
+    result = result.filter(d => String(d.auteur_id) === String(filterUserId));
   }
   
   return result;
@@ -640,7 +640,15 @@ useEffect(() => {
 
   const handleUpdate = async fd => {
     setFormLoading(true);
-    try { await apiFetch(`/documents/${editing.id}`, { method: "PUT", body: fd }); showToast("Mis à jour ✓"); setEditing(null); setSelected(null); loadData(); }
+    try { 
+      await apiFetch(`/documents/${editing.id}`, { method: "PUT", body: fd }); 
+      showToast("Mis à jour ✓"); 
+      setEditing(null); 
+      setSelected(null); 
+      await loadData();
+      const fresh = await apiFetch(`/documents/${editing.id}`);
+      setSelected(fresh);
+    }
     catch (e) { showToast(e.message, "error"); }
     finally { setFormLoading(false); }
   };
@@ -658,8 +666,16 @@ useEffect(() => {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const openDetail = async doc => { try { setSelected(await apiFetch(`/documents/${doc.id}`)); } catch { setSelected(doc); } };
-
+  const openDetail = async doc => { 
+    try { 
+      const data = await apiFetch(`/documents/${doc.id}`);
+      setSelected(data); 
+    } catch { 
+      // ✅ Si erreur, enrichir le doc avec projet_titre depuis la liste
+      const enriched = docs.find(d => d.id === doc.id) || doc;
+      setSelected(enriched); 
+    } 
+  };
   const selectType = t => {
     if (activeType === t && expandedView) { setExpandedView(false); setActiveType(null); }
     else if (activeType === t) { setExpandedView(true); }

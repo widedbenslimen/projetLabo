@@ -385,12 +385,7 @@ export default function Invite() {
             <span className="inv-date">
               {new Date().toLocaleDateString("fr-FR", { weekday:"short", day:"numeric", month:"short" })}
             </span>
-            <button className="inv-btn-refresh" onClick={loadData} disabled={loading} title="Actualiser">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M23 4v6h-6M1 20v-6h6"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-            </button>
+            
           </div>
         </header>
 
@@ -434,7 +429,7 @@ export default function Invite() {
                   <div className="inv-kpis-grid">
                     <KpiCard
                       value={labDocs.length}
-                      label="Total documents"
+                      label="Documents du Laboratoire"
                       sub="tous types confondus"
                       accent="#4F46E5"
                       bg="#EEF2FF"
